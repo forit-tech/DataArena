@@ -1,0 +1,109 @@
+{
+  "created_at": "2026-09-06T18:42:11.482Z",
+  "data": {
+    "bytes": 6245,
+    "column_count": 8,
+    "compression": "zstd",
+    "content_fingerprint": {
+      "algorithm": "dataarena-logical-sha256-v1",
+      "value": "457184a0a0dc03776d8e8557ab0e02092f09b67866fa453fdfd51615116adac3"
+    },
+    "files": [
+      "data/part-0000.parquet",
+      "data/part-0001.parquet"
+    ],
+    "format": "parquet",
+    "row_count": 12,
+    "row_count_exact": true,
+    "row_key": [
+      "customer_id"
+    ]
+  },
+  "format": "dataarena.package",
+  "format_version": "1.0.0",
+  "hints": {
+    "datetime_columns": [
+      "signup_date"
+    ],
+    "excluded_by_user": [],
+    "excluded_candidates": [
+      {
+        "column": "internal_note",
+        "reason": "свободный текст оператора, часть значений появляется после события"
+      }
+    ],
+    "high_cardinality_columns": [
+      "city"
+    ],
+    "identifier_columns": [
+      "customer_id"
+    ],
+    "suggested_group_column": "customer_id",
+    "suggested_targets": [
+      {
+        "column": "churned",
+        "confidence": "medium",
+        "reason": "boolean, 2 класса, доля меньшего 0.36"
+      },
+      {
+        "column": "plan",
+        "confidence": "low",
+        "reason": "категориальная, 3 класса, без пропусков"
+      }
+    ],
+    "suggested_time_column": "signup_date"
+  },
+  "links": {
+    "dataarena_base_url": "http://127.0.0.1:5174",
+    "inspect_url_template": "/workspaces/ws_golden/datasets/ds_01J8ZK1A2B3C4D/v2?focus={column}"
+  },
+  "name": "customers_golden",
+  "package_id": "pkg_01J8ZK4M7Q2N5X",
+  "parts": [
+    {
+      "bytes": 3210,
+      "path": "data/part-0000.parquet",
+      "sha256": "f4fc0bd216b9785b3a7dd39becd1deff7526f743fc6d8d7c202b9a41bef17dfa"
+    },
+    {
+      "bytes": 3035,
+      "path": "data/part-0001.parquet",
+      "sha256": "09afddb098ffa2684e92b7a582d3f204dc4691763eb6077325a32ee5221c964b"
+    },
+    {
+      "bytes": 2978,
+      "path": "schema.json",
+      "sha256": "7a1554192b3def4f2e1496d5141f53007ad90c4bfffb60c2e2c9c7bbbc9d99cb"
+    },
+    {
+      "bytes": 7286,
+      "path": "profile.json",
+      "sha256": "165c94eac4a9b900c5addaeeb42373a70dd57c7f7ab056327b41760a26795e45"
+    },
+    {
+      "bytes": 1294,
+      "path": "lineage.json",
+      "sha256": "a9f980207fffba41fd0b9bcd41194a00613833cd800e07f847295a57fa3d06a6"
+    },
+    {
+      "bytes": 769,
+      "path": "recipe.json",
+      "sha256": "2f532f8f99c186f93d9d2c1efa1945b1010fa42e52967b492183ba4fff13baf7"
+    },
+    {
+      "bytes": 3210,
+      "path": "data/part-0000.parquet",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "producer": {
+    "name": "DataArena",
+    "version": "0.0.0-contract"
+  },
+  "version": {
+    "dataset_id": "ds_01J8ZK1A2B3C4D",
+    "parent_version_id": "dsv_01J8ZJ9Z8Y7X6W",
+    "version_id": "dsv_01J8ZK4M6P1Q2R",
+    "version_number": 2
+  }
+}

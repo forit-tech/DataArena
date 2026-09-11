@@ -1,0 +1,85 @@
+[project]
+name = "dataarena"
+version = "0.1.0"
+description = "Локальная рабочая среда для табличных данных: просмотр, SQL, диагностика, преобразования, сборка и экспорт датасетов."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    # верхние границы заданы по minor, а не по major: в AutoDataAnalysis граница "<4.0"
+    # для pandas оказалась настолько широкой, что установилась major-версия, которой
+    # на момент написания границы не существовало, и воспроизводимость исчезла.
+    #
+    # Границы сверены с тем, что действительно установлено: tests/test_dependencies.py
+    # краснеет, если объявленное расходится с рабочим окружением. До этой проверки здесь
+    # стояли выдуманные диапазоны ("fastapi>=0.141" при установленной 0.116), и обновление
+    # FastAPI подо мной уронило приложение на импорте, ничего не нарушив формально.
+    "duckdb>=1.5,<1.6",
+    "fastapi>=0.141,<0.142",
+    # starlette приходит с FastAPI, но закреплена явно: в 0.47.3 было шесть известных
+    # уязвимостей, и без нижней границы установка легко откатилась бы на неё
+    "starlette>=1.3.1,<2.0",
+    "fastexcel>=0.20,<0.21",
+    "numpy>=2.4,<3.0",
+    "polars>=1.43,<1.44",
+    "pyarrow>=24,<25",
+    "pydantic>=2.12,<3.0",
+    "python-multipart>=0.0.20,<0.1",
+    "uvicorn[standard]>=0.35,<0.40",
+    "xlsxwriter>=3.2,<4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1.0",
+    "jsonschema>=4.26,<5.0",
+    "mypy>=2.3,<3.0",
+    "packaging>=24",
+    "pytest>=9.0,<10.0",
+    "ruff>=0.16,<0.17",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "S", "ARG", "PIE", "PL", "BLE", "SLF"]
+ignore = [
+    # RUF001-003 срабатывают на кириллице в строках и комментариях, а интерфейс проекта русскоязычный
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # B008 неизбежен в FastAPI: File(...) и Form(...) по контракту вызываются в значениях по умолчанию
+    "B008",
+    # локальные импорты используются осознанно: тяжёлые библиотеки грузятся лениво
+    "PLC0415",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# в тестах допустимы assert, «магические» числа и длинные фикстуры
+# S608: сборка враждебного SQL из строк — предмет проверки в тестах безопасности,
+# а не недосмотр: именно так выглядит запрос, который к нам придёт
+"tests/*" = ["S101", "PLR2004", "ARG001", "E501", "SLF001", "S608"]
+# сквозная проверка обращается к собственному серверу на 127.0.0.1 и сравнивает коды
+# ответа: превращать 200 и 201 в именованные константы здесь значит ухудшить читаемость
+"scripts/*" = ["S310", "PLR2004"]
+
+[tool.mypy]
+# версия не фиксируется: mypy берёт её у интерпретатора, под которым запущен
+packages = ["backend"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_untyped_defs = true

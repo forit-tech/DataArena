@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# отмена устаревших прогонов экономит время очереди при частых пушах в одну ветку
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (ruff, mypy, pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check backend tests tools scripts
+
+      - name: Type check (mypy)
+        run: mypy
+
+      - name: Tests (pytest)
+        run: pytest --cov=backend --cov-report=term-missing
+
+  contract:
+    name: Contract (matrix + reproducibility on two Polars versions)
+    runs-on: ubuntu-latest
+    strategy:
+      # отпечаток обязан не зависеть от версии библиотеки — это условие J-6 критерия freeze,
+      # и проверяется оно единственным способом: прогоном на разных версиях
+      fail-fast: false
+      matrix:
+        polars: ["1.20.0", "1.44.1"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install contract tooling
+        run: pip install "polars==${{ matrix.polars }}" numpy jsonschema
+
+      - name: Producer matrix (J-4)
+        run: python docs/contracts/reference/run_matrix.py docs/contracts
+
+      - name: Fingerprint reproducibility (J-6)
+        run: python docs/contracts/reference/check_reproducibility.py
+
+  frontend:
+    name: Frontend (lint, typecheck, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Type check (tsc)
+        run: npx tsc --noEmit
+
+      - name: Tests (vitest)
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+
+  smoke:
+    name: Smoke (backend starts and answers)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Start backend and check health
+        run: |
+          python -m uvicorn backend.main:app --host 127.0.0.1 --port 8510 &
+          for attempt in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8510/api/system/health > /dev/null; then
+              echo "backend is up"
+              curl -sf http://127.0.0.1:8510/api/system/health
+              curl -sf http://127.0.0.1:8510/openapi.json > /dev/null && echo "openapi ok"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend did not start" && exit 1

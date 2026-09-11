@@ -1,0 +1,214 @@
+/* Диагностика: карточки находок и сводка по уровням.
+   Сводной оценки качества здесь нет намеренно — есть счётчики по уровням. */
+
+.health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.health__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.health__count {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.health__count-value {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.health__count-label {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.health__meta {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin-left: auto;
+}
+
+.health__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.finding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  /* цветная полоса слева: уровень виден до чтения заголовка */
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.finding--problem {
+  border-left-color: var(--severity-error);
+  color: var(--text-primary);
+}
+
+.finding--problem > .finding__head > svg,
+.health__count.finding--problem > svg {
+  color: var(--severity-error);
+}
+
+.finding--warning {
+  border-left-color: var(--severity-warning);
+}
+
+.finding--warning > .finding__head > svg,
+.health__count.finding--warning > svg {
+  color: var(--severity-warning);
+}
+
+.finding--notice {
+  border-left-color: var(--accent-primary);
+}
+
+.finding--notice > .finding__head > svg,
+.health__count.finding--notice > svg {
+  color: var(--accent-primary);
+}
+
+.finding__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.finding__title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.finding__code {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.finding__facts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.finding__column {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.finding__exactness {
+  color: var(--text-muted);
+}
+
+/* выборочная оценка подписана словами и выделена: принять её за точное число
+   значит принять неверное решение по данным */
+.finding__exactness--sampled {
+  color: var(--severity-warning);
+  border: 1px solid var(--severity-warning);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-2);
+}
+
+.finding__explanation {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.finding__evidence {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finding__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.finding__suggestion {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+/* полоса над таблицей, когда показаны строки находки */
+.table-finding {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  background: var(--accent-primary-muted);
+  margin-bottom: var(--space-2);
+}
+
+.table-finding__text {
+  font-size: var(--text-sm);
+}
+
+/* колонка с номером строки в файле */
+.table-ordinal {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--space-2);
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-inset);
+  user-select: none;
+}
+
+.table-th--ordinal {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  background: var(--surface-inset);
+  border-right: 1px solid var(--border-subtle);
+}

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forit.tech/schemas/dataarena/package/v1/lineage.schema.json",
+  "title": "Dataset Package lineage.json (dataarena.package/1)",
+  "description": "Линейная история происхождения одного результата. Не Git для датасетов: ветвлений, слияний версий и diff-ов нет.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["format_version", "created_at", "sources", "graph"],
+  "properties": {
+    "format_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+    },
+    "package_id": { "type": "string", "maxLength": 100 },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+
+    "sources": {
+      "type": "array",
+      "description": "Исходные файлы с хешами. Позволяют понять, на каких данных получен результат.",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "name", "format", "sha256"],
+        "properties": {
+          "id": { "$ref": "#/$defs/node_id" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "format": { "type": "string", "maxLength": 50 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "row_count": { "type": "integer", "minimum": 0 },
+          "column_count": { "type": "integer", "minimum": 0 },
+          "read_options": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+
+    "graph": {
+      "type": "array",
+      "description": "Узлы преобразований в порядке выполнения. inputs ссылаются на id узлов или источников.",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "op", "inputs"],
+        "properties": {
+          "id": { "$ref": "#/$defs/node_id" },
+          "op": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Незнакомую операцию потребитель показывает как есть.",
+            "examples": ["read", "rename_column", "cast_column", "drop_columns", "filter_rows", "join", "deduplicate", "select_columns"]
+          },
+          "inputs": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "$ref": "#/$defs/node_id" }
+          },
+          "source": { "$ref": "#/$defs/node_id" },
+          "output_rows": { "type": "integer", "minimum": 0 },
+          "params": { "type": "object", "additionalProperties": true },
+          "note": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    },
+
+    "row_count_trace": {
+      "type": "array",
+      "description": "Как менялось число строк по шагам. Отвечает на вопрос, на каком шаге строк стало больше или меньше.",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["after", "rows"],
+        "properties": {
+          "after": { "$ref": "#/$defs/node_id" },
+          "rows": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "node_id": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[A-Za-z0-9_.-]+$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" }
+  }
+}

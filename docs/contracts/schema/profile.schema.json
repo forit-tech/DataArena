@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forit.tech/schemas/dataarena/package/v1/profile.schema.json",
+  "title": "Dataset Package profile.json (dataarena.package/1)",
+  "description": "ADVISORY ONLY. Профиль для показа человеку. Потребитель пересчитывает сам всё, на чём строит решения.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["format_version", "computed_at", "computed_on", "dataset", "columns"],
+  "properties": {
+    "format_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+    },
+    "computed_at": { "$ref": "#/$defs/timestamp" },
+    "computed_on": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["rows", "sampled"],
+      "properties": {
+        "rows": { "type": "integer", "minimum": 0 },
+        "sampled": {
+          "type": "boolean",
+          "description": "true означает, что статистики приблизительны. Потребитель обязан показать это в интерфейсе."
+        },
+        "sample_method": { "type": "string", "maxLength": 100 }
+      }
+    },
+
+    "dataset": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["row_count", "column_count"],
+      "properties": {
+        "row_count": { "type": "integer", "minimum": 0 },
+        "column_count": { "type": "integer", "minimum": 0 },
+        "duplicate_row_count": { "type": "integer", "minimum": 0 },
+        "missing_cell_count": { "type": "integer", "minimum": 0 },
+        "missing_cell_ratio": { "$ref": "#/$defs/ratio" },
+        "quality_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "quality_breakdown": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["score", "max_score", "penalties"],
+          "properties": {
+            "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "max_score": { "type": "integer", "minimum": 1 },
+            "total_penalty": { "type": "number", "minimum": 0 },
+            "penalties": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["key", "label", "ratio", "weight", "penalty", "explanation"],
+                "properties": {
+                  "key": { "type": "string", "maxLength": 100 },
+                  "label": { "type": "string", "maxLength": 200 },
+                  "ratio": { "$ref": "#/$defs/ratio" },
+                  "weight": { "type": "number", "minimum": 0 },
+                  "penalty": { "type": "number", "minimum": 0 },
+                  "explanation": { "type": "string", "maxLength": 1000 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "columns": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "semantic_type"],
+        "properties": {
+          "name": { "$ref": "#/$defs/column_name" },
+          "semantic_type": {
+            "type": "string",
+            "enum": ["id", "numeric", "categorical", "datetime", "boolean", "text"]
+          },
+          "missing_count": { "type": "integer", "minimum": 0 },
+          "missing_ratio": { "$ref": "#/$defs/ratio" },
+          "unique_count": { "type": "integer", "minimum": 0 },
+          "unique_ratio": { "$ref": "#/$defs/ratio" },
+          "is_constant": { "type": "boolean" },
+          "is_probable_id": { "type": "boolean" },
+          "id_reason": { "oneOf": [{ "type": "string", "maxLength": 500 }, { "type": "null" }] },
+          "is_imbalanced": { "type": "boolean" },
+          "numeric_stats": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "min": { "$ref": "#/$defs/nullable_number" },
+                  "max": { "$ref": "#/$defs/nullable_number" },
+                  "mean": { "$ref": "#/$defs/nullable_number" },
+                  "median": { "$ref": "#/$defs/nullable_number" },
+                  "std": { "$ref": "#/$defs/nullable_number" },
+                  "q1": { "$ref": "#/$defs/nullable_number" },
+                  "q3": { "$ref": "#/$defs/nullable_number" },
+                  "skewness": { "$ref": "#/$defs/nullable_number" },
+                  "p01": { "$ref": "#/$defs/nullable_number" },
+                  "p05": { "$ref": "#/$defs/nullable_number" },
+                  "p95": { "$ref": "#/$defs/nullable_number" },
+                  "p99": { "$ref": "#/$defs/nullable_number" }
+                }
+              },
+              { "type": "null" }
+            ]
+          },
+          "histogram": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["bins", "counts"],
+                "properties": {
+                  "bins": { "type": "array", "items": { "type": "number" }, "maxItems": 1001 },
+                  "counts": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "maxItems": 1000 }
+                }
+              },
+              { "type": "null" }
+            ]
+          },
+          "top_values": {
+            "oneOf": [
+              {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": ["value", "count", "ratio"],
+                  "properties": {
+                    "value": {},
+                    "count": { "type": "integer", "minimum": 0 },
+                    "ratio": { "$ref": "#/$defs/ratio" }
+                  }
+                }
+              },
+              { "type": "null" }
+            ]
+          },
+          "examples": { "type": "array", "maxItems": 20 }
+        }
+      }
+    },
+
+    "correlation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["method", "columns", "matrix"],
+          "properties": {
+            "method": { "type": "string", "enum": ["pearson", "spearman", "kendall"] },
+            "columns": { "type": "array", "items": { "$ref": "#/$defs/column_name" }, "maxItems": 1000 },
+            "matrix": {
+              "type": "array",
+              "maxItems": 1000,
+              "items": { "type": "array", "items": { "$ref": "#/$defs/nullable_number" }, "maxItems": 1000 }
+            },
+            "high_pairs": {
+              "type": "array",
+              "maxItems": 10000,
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["a", "b", "value", "method"],
+                "properties": {
+                  "a": { "$ref": "#/$defs/column_name" },
+                  "b": { "$ref": "#/$defs/column_name" },
+                  "value": { "type": "number", "minimum": -1, "maximum": 1 },
+                  "method": { "type": "string", "enum": ["pearson", "spearman", "kendall"] }
+                }
+              }
+            }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+
+    "findings": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "kind", "severity", "explanation"],
+        "properties": {
+          "id": { "type": "string", "maxLength": 200 },
+          "kind": {
+            "type": "string",
+            "description": "Незнакомое значение потребитель показывает как есть, не падая.",
+            "examples": ["outliers", "missing", "duplicates", "constant", "high_cardinality", "near_zero_variance"]
+          },
+          "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+          "column": { "oneOf": [{ "$ref": "#/$defs/column_name" }, { "type": "null" }] },
+          "count": { "type": "integer", "minimum": 0 },
+          "method": { "type": "string", "maxLength": 100 },
+          "threshold": { "type": "object", "additionalProperties": true },
+          "explanation": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "drilldown": {
+            "type": "object",
+            "description": "Ссылка для producer. Потребитель НЕ исполняет query; для показа строк использует row_indexes.",
+            "additionalProperties": true,
+            "properties": {
+              "kind": { "type": "string", "enum": ["sql", "row_indexes"] },
+              "dialect": { "type": "string", "maxLength": 50 },
+              "query": { "type": "string", "maxLength": 10000 },
+              "row_indexes": {
+                "type": "array",
+                "maxItems": 100000,
+                "items": { "type": "integer", "minimum": 0 },
+                "description": "Канонические позиции строк, начиная с нуля."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "suspicious_columns": {
+      "type": "array",
+      "description": "Подозрения producer БЕЗ утверждений о leakage: без target такое утверждение необоснованно.",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["column", "reason"],
+        "properties": {
+          "column": { "$ref": "#/$defs/column_name" },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "recommendation": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "column_name": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+    "nullable_number": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" }
+  }
+}

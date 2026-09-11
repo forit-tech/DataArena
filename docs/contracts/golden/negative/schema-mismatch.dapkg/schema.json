@@ -1,0 +1,135 @@
+{
+  "columns": [
+    {
+      "description": null,
+      "logical_type": "float",
+      "name": "monthly_spend",
+      "nullable": true,
+      "physical_type": "Float64",
+      "position": 0,
+      "semantic_type": "numeric",
+      "source": {
+        "dataset": "customers.csv",
+        "original_name": "monthly_spend"
+      },
+      "unique": false
+    },
+    {
+      "description": null,
+      "logical_type": "integer",
+      "name": "customer_id",
+      "nullable": false,
+      "physical_type": "Int64",
+      "position": 1,
+      "semantic_type": "id",
+      "source": {
+        "dataset": "customers.csv",
+        "original_name": "customer_id"
+      },
+      "unique": true
+    },
+    {
+      "description": null,
+      "logical_type": "integer",
+      "name": "tenure_months",
+      "nullable": false,
+      "physical_type": "Int64",
+      "position": 2,
+      "semantic_type": "numeric",
+      "source": {
+        "dataset": "customers.csv",
+        "original_name": "tenure_months"
+      },
+      "unique": true
+    },
+    {
+      "description": null,
+      "logical_type": "string",
+      "name": "plan",
+      "nullable": false,
+      "physical_type": "String",
+      "position": 3,
+      "semantic_type": "categorical",
+      "source": {
+        "dataset": "customers.csv",
+        "original_name": "plan"
+      },
+      "unique": false
+    },
+    {
+      "description": null,
+      "logical_type": "string",
+      "name": "city",
+      "nullable": false,
+      "physical_type": "String",
+      "position": 4,
+      "semantic_type": "categorical",
+      "source": {
+        "dataset": "customers.csv",
+        "original_name": "city"
+      },
+      "unique": true
+    },
+    {
+      "description": null,
+      "logical_type": "date",
+      "name": "signup_date",
+      "nullable": false,
+      "physical_type": "Date",
+      "position": 5,
+      "semantic_type": "datetime",
+      "source": {
+        "dataset": "customers.csv",
+        "original_name": "signup_date"
+      },
+      "unique": true
+    },
+    {
+      "description": null,
+      "logical_type": "boolean",
+      "name": "churned",
+      "nullable": true,
+      "physical_type": "Boolean",
+      "position": 6,
+      "semantic_type": "boolean",
+      "source": {
+        "dataset": "customers.csv",
+        "original_name": "churned"
+      },
+      "unique": false
+    },
+    {
+      "description": null,
+      "logical_type": "string",
+      "name": "internal_note",
+      "nullable": true,
+      "physical_type": "String",
+      "position": 7,
+      "semantic_type": "text",
+      "source": {
+        "dataset": "customers.csv",
+        "original_name": "internal_note"
+      },
+      "unique": false
+    }
+  ],
+  "constraints": [
+    {
+      "columns": [
+        "customer_id",
+        "plan"
+      ],
+      "kind": "not_null"
+    },
+    {
+      "columns": [
+        "customer_id"
+      ],
+      "kind": "unique"
+    }
+  ],
+  "format_version": "1.0.0",
+  "primary_key": [
+    "customer_id"
+  ]
+}

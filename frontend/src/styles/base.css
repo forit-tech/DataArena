@@ -1,0 +1,252 @@
+/* Базовые стили оболочки. Стили разделов живут рядом со своими features. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* числа выравниваются по разрядам: колонку чисел читают глазами, а не поштучно */
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  height: 100%;
+}
+
+.app-sidebar {
+  background: var(--surface-inset);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-3);
+  gap: var(--space-5);
+}
+
+.app-brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.app-brand__name {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.app-brand__version {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.app-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.app-nav__item:hover:not(:disabled) {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+.app-nav__item[aria-current="page"] {
+  background: var(--accent-primary-muted);
+  color: var(--text-primary);
+}
+
+.app-nav__item:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+.app-header__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.app-header__subtitle {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.app-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-5);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.status-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.status-pill--ok .status-pill__dot {
+  background: var(--severity-ok);
+}
+
+.status-pill--down {
+  border-color: var(--accent-wine);
+  color: var(--severity-critical);
+}
+
+.status-pill--down .status-pill__dot {
+  background: var(--severity-critical);
+}
+
+.banner {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--text-muted);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.banner--error {
+  border-left-color: var(--accent-wine);
+  background: var(--accent-wine-muted);
+}
+
+.banner--info {
+  border-left-color: var(--severity-info);
+}
+
+.banner__title {
+  margin: 0 0 2px;
+  font-weight: 600;
+}
+
+.banner__text {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.empty-state__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.empty-state__text {
+  margin: 0;
+  max-width: 52ch;
+  font-size: var(--text-sm);
+}
+
+.stage-note {
+  display: grid;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 68ch;
+  /* параметры читают построчно, поэтому они выравниваются по левому краю,
+     а не наследуют центрирование от пустого состояния */
+  text-align: left;
+}
+
+.stage-note dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.stage-note dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.stage-note dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}

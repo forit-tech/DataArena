@@ -1,0 +1,33 @@
+{
+  "created_at": "2026-09-06T18:42:11.482Z",
+  "data": {
+    "bytes": 3375,
+    "column_count": 8,
+    "compression": "zstd",
+    "content_fingerprint": {
+      "algorithm": "dataarena-logical-sha256-v1",
+      "value": "457184a0a0dc03776d8e8557ab0e02092f09b67866fa453fdfd51615116adac3"
+    },
+    "files": [
+      "data/part-0000.parquet"
+    ],
+    "format": "parquet",
+    "row_count": 12,
+    "row_count_exact": true
+  },
+  "format": "dataarena.package",
+  "format_version": "1.0.0",
+  "name": "customers_minimal",
+  "package_id": "pkg_minimal01",
+  "parts": [
+    {
+      "bytes": 3375,
+      "path": "data/part-0000.parquet",
+      "sha256": "10be48a0cb3ae26ef99471dcc5da11d510e16726c8cb22302d9b3c1568855d93"
+    }
+  ],
+  "producer": {
+    "name": "DataArena",
+    "version": "0.0.0-contract"
+  }
+}

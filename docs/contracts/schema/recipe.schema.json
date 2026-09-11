@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forit.tech/schemas/dataarena/package/v1/recipe.schema.json",
+  "title": "Dataset Package recipe.json (dataarena.package/1)",
+  "description": "Воспроизводимый рецепт сборки, отделённый от данных. Потребитель его НЕ исполняет — только показывает.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["format_version", "name", "inputs", "steps"],
+  "properties": {
+    "format_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+
+    "derived_from_lineage": {
+      "type": "boolean",
+      "description": "true — рецепт восстановлен из lineage автоматически и мог потерять детали; false — записан явно при сборке. Влияет на то, с какой уверенностью его можно применять к новым файлам."
+    },
+
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["alias", "required_columns"],
+        "properties": {
+          "alias": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "description": "Имя, под которым источник упоминается в steps."
+          },
+          "required_columns": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": { "type": "string", "minLength": 1, "maxLength": 300 },
+            "description": "Проверяются ДО выполнения: отсутствие колонки — понятная ошибка, а не падение в середине."
+          },
+          "format_hint": { "type": "string", "maxLength": 50 },
+          "source_sha256": {
+            "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{64}$" }, { "type": "null" }],
+            "description": "Хеш файла, на котором рецепт был получен. При несовпадении producer обязан предупредить, а не выполнить молча."
+          }
+        }
+      }
+    },
+
+    "steps": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["op"],
+        "properties": {
+          "op": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Операция преобразования. Незнакомую потребитель показывает как есть и не исполняет."
+          },
+          "on": { "type": "string", "maxLength": 100 },
+          "params": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Параметры операции. Никакого eval/exec: значения интерпретируются только собственным движком producer."
+          }
+        }
+      }
+    },
+
+    "output": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["csv", "tsv", "parquet", "json", "jsonl", "xlsx", "feather", "arrow"]
+        },
+        "compression": {
+          "type": "string",
+          "enum": ["none", "snappy", "gzip", "zstd", "lz4", "brotli"]
+        }
+      }
+    }
+  }
+}

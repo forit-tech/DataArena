@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forit.tech/schemas/dataarena/package/v1/schema.schema.json",
+  "title": "Dataset Package schema.json (dataarena.package/1)",
+  "description": "Описание колонок. Опционален: без него типы выводятся из Parquet по нормативной таблице §D. Если присутствует — обязан описывать ровно то, что лежит в Parquet: расхождение по именам, порядку или logical_type делает пакет невалидным (package_schema_mismatch).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["format_version", "columns"],
+  "properties": {
+    "format_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+    },
+    "columns": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "position", "physical_type", "logical_type", "semantic_type", "nullable"],
+        "properties": {
+          "name": { "$ref": "#/$defs/column_name" },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Позиция в таблице, начиная с нуля. Порядок колонок входит в fingerprint."
+          },
+          "physical_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Тип хранения в Parquet, как его называет producer. Информативен."
+          },
+          "logical_type": { "$ref": "#/$defs/logical_type" },
+          "semantic_type": { "$ref": "#/$defs/semantic_type" },
+          "nullable": { "type": "boolean" },
+          "unique": { "type": "boolean" },
+          "description": {
+            "oneOf": [{ "type": "string", "maxLength": 2000 }, { "type": "null" }]
+          },
+          "source": {
+            "type": "object",
+            "description": "Откуда колонка пришла. Позволяет ответить на вопрос о происхождении без чтения lineage.json.",
+            "additionalProperties": true,
+            "properties": {
+              "dataset": { "type": "string", "maxLength": 300 },
+              "original_name": {
+                "oneOf": [{ "$ref": "#/$defs/column_name" }, { "type": "null" }]
+              }
+            }
+          }
+        }
+      }
+    },
+    "primary_key": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/column_name" },
+      "description": "Подсказка для group_column у потребителя. Предлагается, не навязывается."
+    },
+    "constraints": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["kind", "columns"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["not_null", "unique", "foreign_key"] },
+          "columns": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": { "$ref": "#/$defs/column_name" }
+          },
+          "references": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "dataset": { "type": "string", "maxLength": 300 },
+              "columns": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/column_name" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "column_name": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "logical_type": {
+      "type": "string",
+      "enum": ["boolean", "integer", "float", "decimal", "date", "datetime", "duration", "time", "string", "binary"],
+      "description": "Тот же список, что участвует в dataarena-logical-sha256-v1."
+    },
+    "semantic_type": {
+      "type": "string",
+      "enum": ["id", "numeric", "categorical", "datetime", "boolean", "text"],
+      "description": "Смысл колонки. Незнакомое значение потребитель игнорирует и определяет тип сам."
+    }
+  }
+}

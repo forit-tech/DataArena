@@ -1,0 +1,70 @@
+{
+  "created_at": "2026-09-06T18:42:11.482Z",
+  "format_version": "1.0.0",
+  "graph": [
+    {
+      "id": "n1",
+      "inputs": [],
+      "op": "read",
+      "output_rows": 14,
+      "source": "src_customers"
+    },
+    {
+      "id": "n2",
+      "inputs": [
+        "n1"
+      ],
+      "op": "rename_column",
+      "output_rows": 14,
+      "params": {
+        "from": "userid",
+        "to": "customer_id"
+      }
+    },
+    {
+      "id": "n3",
+      "inputs": [
+        "n2"
+      ],
+      "note": "две строки повторяли customer_id",
+      "op": "deduplicate",
+      "output_rows": 12,
+      "params": {
+        "keep": "first",
+        "subset": [
+          "customer_id"
+        ]
+      }
+    }
+  ],
+  "package_id": "pkg_01J8ZK4M7Q2N5X",
+  "row_count_trace": [
+    {
+      "after": "n1",
+      "rows": 14
+    },
+    {
+      "after": "n2",
+      "rows": 14
+    },
+    {
+      "after": "n3",
+      "rows": 12
+    }
+  ],
+  "sources": [
+    {
+      "bytes": 1284,
+      "column_count": 8,
+      "format": "csv",
+      "id": "src_customers",
+      "name": "customers.csv",
+      "read_options": {
+        "encoding": "utf-8",
+        "separator": ","
+      },
+      "row_count": 14,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}

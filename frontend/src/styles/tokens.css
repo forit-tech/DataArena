@@ -1,0 +1,75 @@
+/*
+  Токены оформления DataArena.
+
+  Тёмная база, фиолетовые и wine-red акценты, плотная desktop-first сетка.
+  Это рабочий инструмент: никаких градиентных карточек, декоративных анимаций
+  и landing-разметки. Цвет несёт смысл — им обозначаются тип данных, пропуск,
+  уровень серьёзности находки, — а не украшает.
+*/
+
+:root {
+  /* поверхности: четыре уровня глубины, дальше начинается визуальный шум */
+  --surface-base: #131318;
+  --surface-raised: #1a1a21;
+  --surface-overlay: #21212a;
+  --surface-inset: #0e0e12;
+
+  --border-subtle: #26262f;
+  --border-default: #32323d;
+  --border-strong: #45454f;
+
+  --text-primary: #e8e8ed;
+  --text-secondary: #a0a0ac;
+  --text-muted: #6e6e7a;
+  --text-inverse: #131318;
+
+  /* акценты: фиолетовый — основное действие, wine-red — разрушающее и критичное */
+  --accent-primary: #8b5cf6;
+  --accent-primary-hover: #a17df8;
+  --accent-primary-muted: #2a1f47;
+  --accent-wine: #9f1239;
+  --accent-wine-hover: #be1744;
+  --accent-wine-muted: #3a1020;
+
+  /* уровни серьёзности находок Dataset Health */
+  --severity-info: #38bdf8;
+  --severity-warning: #f59e0b;
+  --severity-critical: #ef4444;
+  --severity-ok: #10b981;
+
+  /* цвета типов колонок: одинаковые в шапке таблицы, в схеме и в профиле */
+  --type-numeric: #60a5fa;
+  --type-string: #a78bfa;
+  --type-datetime: #34d399;
+  --type-boolean: #fbbf24;
+  --type-id: #f472b6;
+  --type-null: #52525b;
+
+  /* плотная типографика: моноширинный шрифт для данных, пропорциональный для интерфейса */
+  --font-ui: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Consolas", ui-monospace, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+
+  /* шаг сетки 4px: таблица на тысячи строк не должна дышать воздухом */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+
+  /* высота строки таблицы фиксирована: на ней держится виртуализация */
+  --row-height: 28px;
+  --header-height: 34px;
+
+  --transition-fast: 120ms ease;
+}

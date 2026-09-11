@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forit.tech/schemas/dataarena/package/v1/manifest.schema.json",
+  "title": "Dataset Package manifest (dataarena.package/1)",
+  "description": "Единственная точка входа в пакет. Читается первым, до любых других файлов.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["format", "format_version", "package_id", "name", "created_at", "producer", "data"],
+  "properties": {
+    "format": {
+      "const": "dataarena.package"
+    },
+    "format_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "description": "Semver. Потребитель отвергает неизвестную MAJOR-версию."
+    },
+    "package_id": { "$ref": "#/$defs/identifier" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+    "producer": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 50 }
+      }
+    },
+
+    "version": {
+      "type": "object",
+      "description": "Неизменяемый снимок. Любая правка данных даёт новый version_id.",
+      "additionalProperties": true,
+      "required": ["dataset_id", "version_id"],
+      "properties": {
+        "dataset_id": { "$ref": "#/$defs/identifier", "description": "Стабилен между версиями" },
+        "version_id": { "$ref": "#/$defs/identifier" },
+        "version_number": { "type": "integer", "minimum": 1 },
+        "parent_version_id": {
+          "oneOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        }
+      }
+    },
+
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["files", "format", "row_count", "column_count"],
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/package_path" },
+          "description": "Порядок нормативен: части собираются в таблицу именно в нём."
+        },
+        "format": { "const": "parquet" },
+        "compression": { "type": "string", "enum": ["none", "snappy", "gzip", "zstd", "lz4", "brotli"] },
+        "row_count": { "type": "integer", "minimum": 0 },
+        "row_count_exact": { "type": "boolean", "default": true },
+        "column_count": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "row_key": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/column_name" },
+          "description": "Колонки, уникально идентифицирующие строку. Устойчивая ссылка между сервисами: в отличие от позиции, переживает перепаковку пакета."
+        },
+        "content_fingerprint": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": {
+              "type": "string",
+              "description": "Незнакомый алгоритм — отказ по умолчанию. Приём только по явному действию пользователя, снимок обязан нести признак fingerprint_verified: false.",
+              "examples": ["dataarena-logical-sha256-v1"]
+            },
+            "value": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+
+    "parts": {
+      "type": "array",
+      "description": "Все файлы пакета с их размером и хешем. Файл вне этого списка и вне data.files потребитель не читает.",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "$ref": "#/$defs/package_path" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
+
+    "hints": {
+      "type": "object",
+      "description": "ADVISORY ONLY. Подсказки для показа человеку. Потребитель пересчитывает всё, на чём строит решения.",
+      "additionalProperties": true,
+      "properties": {
+        "suggested_targets": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["column", "reason", "confidence"],
+            "properties": {
+              "column": { "$ref": "#/$defs/column_name" },
+              "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "confidence": { "$ref": "#/$defs/confidence" }
+            }
+          }
+        },
+        "suggested_group_column": { "$ref": "#/$defs/nullable_column" },
+        "suggested_time_column": { "$ref": "#/$defs/nullable_column" },
+        "identifier_columns": { "$ref": "#/$defs/column_list" },
+        "datetime_columns": { "$ref": "#/$defs/column_list" },
+        "high_cardinality_columns": { "$ref": "#/$defs/column_list" },
+        "excluded_candidates": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["column", "reason"],
+            "properties": {
+              "column": { "$ref": "#/$defs/column_name" },
+              "reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+            }
+          }
+        },
+        "excluded_by_user": { "$ref": "#/$defs/column_list" }
+      }
+    },
+
+    "links": {
+      "type": "object",
+      "description": "Необязательная навигация. Пакет обязан читаться без сети и без работающего producer.",
+      "additionalProperties": true,
+      "properties": {
+        "dataarena_base_url": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "inspect_url_template": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Относительный путь с плейсхолдером {column}."
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*_[A-Za-z0-9]{1,64}$",
+      "description": "Префикс типа и стабильный суффикс, например pkg_01J8ZK4M7Q2N5X."
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Нижний регистр, 64 hex-символа."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "RFC 3339, UTC, обязательный суффикс Z."
+    },
+    "package_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$",
+      "description": "Относительный путь внутри пакета. Абсолютные пути и .. запрещены."
+    },
+    "column_name": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "nullable_column": {
+      "oneOf": [{ "$ref": "#/$defs/column_name" }, { "type": "null" }]
+    },
+    "column_list": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/column_name" }
+    },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
+  }
+}
