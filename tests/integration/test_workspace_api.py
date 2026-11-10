@@ -94,7 +94,8 @@ def test_upload_then_read_the_table(client: TestClient, workspace_id: str) -> No
 
     assert len(rows["rows"]) == 5
     assert rows["total_rows"] == 20
-    assert rows["total_is_exact"] is True
+    #признака «число срезано» больше нет: срез убран, число всегда точное
+    assert "total_is_exact" not in rows
     assert rows["columns"] == ["id", "город", "сумма", "дата", "активен"]
 
 
@@ -297,3 +298,53 @@ def test_categorical_column_statistics(client: TestClient, workspace_id: str) ->
     assert stats["unique_count"] == 5
     assert stats["top_values"]
     assert sum(item["count"] for item in stats["top_values"]) == 16
+
+
+#─── удаление датасета ─────────────────────────────────────────────────────────
+
+
+def test_delete_dataset_removes_record_and_files(client: TestClient, workspace_id: str, tmp_path: Path) -> None:
+    dataset = upload(client, workspace_id, sample_frame(), "продажи.csv")
+    dataset_id = dataset["dataset_id"]
+    sources = tmp_path / "workspaces" / workspace_id / "sources"
+    assert list(sources.glob(f"{dataset_id}.*"))
+
+    response = client.delete(f"/api/workspaces/{workspace_id}/datasets/{dataset_id}")
+
+    assert response.status_code == 204
+    listed = client.get(f"/api/workspaces/{workspace_id}/datasets").json()["datasets"]
+    assert all(item["dataset_id"] != dataset_id for item in listed)
+    assert client.get(f"/api/workspaces/{workspace_id}/datasets/{dataset_id}").status_code == 404
+    assert not list(sources.glob(f"{dataset_id}.*"))
+
+
+def test_delete_keeps_other_datasets(client: TestClient, workspace_id: str) -> None:
+    first = upload(client, workspace_id, sample_frame(), "первый.csv")
+    second = upload(client, workspace_id, sample_frame().head(5), "второй.csv")
+
+    client.delete(f"/api/workspaces/{workspace_id}/datasets/{first['dataset_id']}")
+
+    listed = [item["dataset_id"] for item in client.get(f"/api/workspaces/{workspace_id}/datasets").json()["datasets"]]
+    assert listed == [second["dataset_id"]]
+    assert client.get(f"/api/workspaces/{workspace_id}/datasets/{second['dataset_id']}/rows").status_code == 200
+
+
+def test_delete_dataset_of_other_workspace_is_not_found(client: TestClient, workspace_id: str) -> None:
+    dataset = upload(client, workspace_id, sample_frame(), "продажи.csv")
+    other = client.post("/api/workspaces", json={"name": "Чужое"}).json()["workspace_id"]
+
+    response = client.delete(f"/api/workspaces/{other}/datasets/{dataset['dataset_id']}")
+
+    assert response.status_code == 404
+    assert client.get(f"/api/workspaces/{workspace_id}/datasets/{dataset['dataset_id']}").status_code == 200
+
+
+def test_reupload_after_delete_creates_dataset_again(client: TestClient, workspace_id: str) -> None:
+    #загрузка адресуется содержимым: после удаления тот же файл должен загрузиться заново,
+    #а не вернуть удалённую карточку
+    first = upload(client, workspace_id, sample_frame(), "продажи.csv")
+    client.delete(f"/api/workspaces/{workspace_id}/datasets/{first['dataset_id']}")
+
+    again = upload(client, workspace_id, sample_frame(), "продажи.csv")
+
+    assert client.get(f"/api/workspaces/{workspace_id}/datasets/{again['dataset_id']}/rows").status_code == 200

@@ -20,6 +20,14 @@ export function formatBytes(bytes: number): string {
   return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
 }
 
+//#показатель округляется до трёх знаков: «разброс 2886,752774891121» — это не точность,
+//#а шум, который вытесняет с экрана остальные показатели
+const STAT_FORMAT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 });
+
+export function formatStat(value: number | null | undefined): string {
+  return value === null || value === undefined ? "" : STAT_FORMAT.format(value);
+}
+
 export function formatRatio(ratio: number): string {
   //#доли показываются процентами с одним знаком: «0.0483» читается хуже, чем «4,8%»
   return `${(ratio * 100).toFixed(1).replace(".", ",")}%`;
@@ -48,10 +56,19 @@ export function formatCell(value: unknown): string {
   return text.length > MAX_CELL_LENGTH ? `${text.slice(0, MAX_CELL_LENGTH)}…` : text;
 }
 
-export function formatRowCount(rowCount: number | null): string {
-  //#null означает «точное число ещё не считалось», а не «строк нет»:
-  //#показывать здесь ноль было бы прямой ложью
-  return rowCount === null ? "не подсчитано" : formatCount(rowCount);
+//#числительное согласуется с числом, а не подставляется родительным падежом на все случаи:
+//#«2 колонок» и «1 строк» — это заметно, и это первое, за что цепляется глаз. Правило
+//#уже было в разделе диагностики, а в остальном интерфейсе его не применяли
+export function rowsLabel(rowCount: number | null): string {
+  if (rowCount === null) {
+    return "не подсчитано строк";
+  }
+
+  return `${formatCount(rowCount)} ${plural(rowCount, "строка", "строки", "строк")}`;
+}
+
+export function columnsLabel(columnCount: number): string {
+  return `${formatCount(columnCount)} ${plural(columnCount, "колонка", "колонки", "колонок")}`;
 }
 
 export function formatDuration(milliseconds: number): string {

@@ -17,10 +17,10 @@ from backend.api.schemas.workspaces import (
 from backend.core.config import get_settings
 from backend.core.errors import ValidationError
 from backend.domain.dataset.identifiers import new_workspace_id
-from backend.services import table_view
+from backend.services import table_view, workspace_access
 from backend.services.column_stats import compute_column_statistics
 from backend.services.context import get_workspace_root, get_workspace_store
-from backend.services.dataset_import import import_dataset
+from backend.services.dataset_import import import_dataset, uploaded
 from backend.services.health import report as health_report
 from backend.services.upload import staged_upload
 from backend.services.workspace_access import get_dataset_of_workspace, open_dataset
@@ -60,7 +60,22 @@ def get_workspace(workspace_id: str) -> dict:
     summary="Удалить рабочее пространство",
 )
 def delete_workspace(workspace_id: str) -> None:
-    get_workspace_store().delete_workspace(workspace_id)
+    workspace_access.delete_workspace(get_workspace_store(), get_workspace_root(), workspace_id)
+
+
+@router.delete(
+    "/{workspace_id}/datasets/{dataset_id}",
+    status_code=204,
+    response_model=None,
+    summary="Удалить датасет",
+    description=(
+        "Удаляет датасет вместе с его диагностикой, конвейером и происхождением, а также "
+        "его файлы в рабочем пространстве. Датасеты, собранные из него раньше, остаются: "
+        "их происхождение показывает родителя как удалённого."
+    ),
+)
+def delete_dataset(workspace_id: str, dataset_id: str) -> None:
+    workspace_access.delete_dataset(get_workspace_store(), get_workspace_root(), workspace_id, dataset_id)
 
 
 @router.post(
@@ -87,7 +102,15 @@ def upload_dataset(workspace_id: str, file: Annotated[UploadFile, File()]) -> di
         staged_path,
         display_name,
     ):
-        dataset = import_dataset(store, workspace_root, workspace_id, staged_path, display_name)
+        dataset = import_dataset(
+            store,
+            workspace_root,
+            workspace_id,
+            staged_path,
+            display_name,
+            provenance=uploaded,
+            content_addressed=True,
+        )
 
     return dataset.to_dict()
 

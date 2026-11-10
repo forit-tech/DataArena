@@ -20,6 +20,14 @@ import polars as pl
 from backend.adapters.formats.capabilities import ALL_FORMATS, FormatCapabilities
 from backend.core.errors import DatasetReadError, UnsupportedFormatError
 
+#предел вложенности JSON. Таблице хватает двух-трёх уровней (массив объектов, иногда
+#вложенный объект); сотня — с большим запасом и далеко от глубины, роняющей процесс
+MAX_JSON_DEPTH = 100
+_QUOTE = ord('"')
+_BACKSLASH = ord("\\")
+_OPENERS = frozenset(b"[{")
+_CLOSERS = frozenset(b"]}")
+
 _BY_EXTENSION: dict[str, FormatCapabilities] = {
     extension: capabilities for capabilities in ALL_FORMATS for extension in capabilities.extensions
 }
@@ -54,6 +62,16 @@ def supported_extensions() -> tuple[str, ...]:
 def supported_formats_text() -> str:
     #одинаковый человекочитаемый список форматов для всех сообщений об ошибках
     return ", ".join(supported_extensions())
+
+
+def writable_formats() -> tuple[FormatCapabilities, ...]:
+    #форматы, в которые можно записать, вместе с их ограничениями: интерфейс не должен
+    #угадывать, что XLSX теряет типы и ограничен по числу строк
+    return tuple(
+        capabilities
+        for capabilities in sorted(_BY_KEY.values(), key=lambda item: item.key)
+        if capabilities.can_write
+    )
 
 
 def capabilities_for_key(key: str) -> FormatCapabilities:
@@ -169,6 +187,46 @@ def scan_dataset(file_path: Path, capabilities: FormatCapabilities | None = None
         raise DatasetReadError(_describe_read_failure(resolved.name, error)) from error
 
 
+def ensure_shallow_json(file_path: Path, limit: int | None = None) -> None:
+    """Отказ для JSON, вложенного глубже предела, — до того, как его увидит движок.
+
+    Измерено: JSON в десять килобайт из пяти тысяч вложенных скобок роняет процесс сервера
+    целиком — переполнение стека в нативном читателе, без исключения и без ответа.
+    Табличным данным такая глубина не нужна, поэтому файл проверяется заранее: потоком,
+    с учётом строк, где скобки — просто символы.
+    """
+    maximum = MAX_JSON_DEPTH if limit is None else limit
+    depth = 0
+    in_string = False
+    escaped = False
+    keep = bytes(range(256)).translate(None, b'[]{}"\\')
+
+    with file_path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            #в блоке остаются только скобки, кавычки и обратные косые: их немного,
+            #и перебор по ним не стоит прохода по каждому байту
+            for byte in chunk.translate(None, keep):
+                if escaped:
+                    escaped = False
+                elif in_string:
+                    if byte == _BACKSLASH:
+                        escaped = True
+                    elif byte == _QUOTE:
+                        in_string = False
+                elif byte == _QUOTE:
+                    in_string = True
+                elif byte in _OPENERS:
+                    depth += 1
+
+                    if depth > maximum:
+                        raise DatasetReadError(
+                            f"JSON вложен глубже {maximum} уровней: такой файл не читается "
+                            "как таблица."
+                        )
+                elif byte in _CLOSERS:
+                    depth = max(depth - 1, 0)
+
+
 def read_dataset(file_path: Path, capabilities: FormatCapabilities | None = None) -> pl.DataFrame:
     #эта функция читает файл целиком и используется там, где ленивый путь недоступен:
     #при нормализации JSON и XLSX в Parquet и в тестах
@@ -176,6 +234,9 @@ def read_dataset(file_path: Path, capabilities: FormatCapabilities | None = None
     format_capabilities = capabilities or detect_format(resolved)
 
     ensure_text_format_is_text(resolved, format_capabilities)
+
+    if format_capabilities.key in {"json", "jsonl"}:
+        ensure_shallow_json(resolved)
 
     try:
         if format_capabilities.key == "json":

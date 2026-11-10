@@ -23,6 +23,11 @@ from fingerprint import ALGORITHM, content_fingerprint, logical_type  # noqa: E4
 
 SCHEMA_DIRECTORY = Path(__file__).resolve().parents[1] / "schema"
 SUPPORTED_MAJOR = 1
+#старшая minor-версия, которую валидатор знает целиком: 1.1 добавила provenance и columns в lineage.json
+SUPPORTED_MINOR = 1
+#§H: глубина вложенности JSON. Глубже — отказ до разбора смысла: разбор такого файла
+#рекурсией исчерпывает стек
+MAX_JSON_DEPTH = 32
 #лимиты §H: метаданные заданы контрактом, размер данных — конфигурацией потребителя
 LIMITS = {
     "manifest_bytes": 1 * 1024 * 1024,
@@ -76,6 +81,40 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _reject_constant(literal: str) -> None:
+    #NaN и Infinity не являются JSON (RFC 8259), хотя json.loads их по умолчанию принимает
+    raise ValueError(f"недопустимое значение {literal}")
+
+
+def _depth(value: object) -> int:
+    #обход без рекурсии: иначе проверка глубины сама упала бы на глубоком файле
+    deepest, stack = 0, [(value, 1)]
+    while stack:
+        current, level = stack.pop()
+        if isinstance(current, dict | list):
+            deepest = max(deepest, level)
+            children = current.values() if isinstance(current, dict) else current
+            stack.extend((child, level + 1) for child in children)
+    return deepest
+
+
+def load_json(path: Path, name: str, report: Report, invalid_code: str) -> object | None:
+    """Строгое чтение JSON части: UTF-8, без NaN и Infinity, не глубже §H.
+
+    Повреждённый файл — отказ с кодом, а не исключение: пакет — входные данные,
+    и валидатор, падающий на них, бесполезен как эталон потребителя.
+    """
+    try:
+        payload = json.loads(path.read_bytes().decode("utf-8"), parse_constant=_reject_constant)
+    except (UnicodeDecodeError, ValueError, RecursionError) as error:
+        report.fail(invalid_code, f"{name}: не читается как JSON ({str(error)[:200]}).")
+        return None
+    if _depth(payload) > MAX_JSON_DEPTH:
+        report.fail("package_limit_exceeded", f"{name}: вложенность глубже {MAX_JSON_DEPTH}.")
+        return None
+    return payload
+
+
 def _validate_json_part(package: Path, name: str, report: Report) -> dict | None:
     #эта функция проверяет размер и схему одной необязательной части пакета
     path = package / name
@@ -87,7 +126,9 @@ def _validate_json_part(package: Path, name: str, report: Report) -> dict | None
         report.fail("package_limit_exceeded", f"{name} больше лимита {LIMITS[limit_key]} байт.")
         return None
 
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = load_json(path, name, report, "package_part_invalid")
+    if payload is None:
+        return None
     errors = list(load_schema(schema_name).iter_errors(payload))
 
     for error in errors:
@@ -96,6 +137,44 @@ def _validate_json_part(package: Path, name: str, report: Report) -> dict | None
     #часть, не прошедшую собственную схему, дальше не разбираем: иначе на один дефект
     #пришло бы несколько кодов ошибки, и потребителю было бы неясно, на какой реагировать
     return None if errors else payload
+
+
+def validate_lineage_columns(lineage: dict, columns: list[str], report: Report) -> None:
+    """Смысл полей 1.1, которого не выразить JSON Schema: история не противоречит пакету.
+
+    История колонок описывает ровно колонки данных и в их порядке; «неизвестно» не
+    сопровождается источником; ссылки на узлы графа и источники существуют.
+    """
+    history = lineage.get("columns")
+    if history is None:
+        return
+
+    names = [entry["name"] for entry in history]
+    if names != columns:
+        report.fail(
+            "package_part_invalid",
+            f"lineage.json: columns описывает {names[:20]}, а в данных {columns[:20]}.",
+        )
+        return
+
+    source_ids = {source["id"] for source in lineage.get("sources", [])}
+    node_ids = {node["id"] for node in lineage.get("graph", [])}
+
+    for entry in history:
+        name = entry["name"]
+        if (entry["origin"] == "unknown") != (not entry["origins"]):
+            report.fail(
+                "package_part_invalid",
+                f"lineage.json: у колонки «{name}» origin={entry['origin']}, а origins — {len(entry['origins'])}.",
+            )
+        dangling = [item["source"] for item in entry["origins"] if "source" in item and item["source"] not in source_ids]
+        dangling += [item["node"] for item in entry["events"] if "node" in item and item["node"] not in node_ids]
+        dangling += [node for node in entry.get("read_by", []) if node not in node_ids]
+        if dangling:
+            report.fail(
+                "package_part_invalid",
+                f"lineage.json: колонка «{name}» ссылается на отсутствующие узлы {sorted(set(dangling))[:10]}.",
+            )
 
 
 def validate_archive(archive_path: Path, report: Report) -> bool:
@@ -154,7 +233,11 @@ def validate_package(package: Path, max_data_bytes: int = DEFAULT_MAX_DATA_BYTES
         report.fail("package_limit_exceeded", "manifest.json больше 1 MiB.")
         return report
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = load_json(manifest_path, "manifest.json", report, "package_manifest_invalid")
+    if not isinstance(manifest, dict):
+        if report.ok:
+            report.fail("package_manifest_invalid", "manifest.json — не объект.")
+        return report
 
     if manifest.get("format") != "dataarena.package":
         report.fail("package_format_unknown", f"Неизвестный format: {manifest.get('format')!r}.")
@@ -174,7 +257,7 @@ def validate_package(package: Path, max_data_bytes: int = DEFAULT_MAX_DATA_BYTES
         )
         return report
 
-    if minor > 0:
+    if minor > SUPPORTED_MINOR:
         report.warn(f"Пакет собран более новой minor-версией ({raw_version}); незнакомые поля игнорируются.")
 
     for error in load_schema("manifest.schema.json").iter_errors(manifest):
@@ -291,7 +374,7 @@ def validate_package(package: Path, max_data_bytes: int = DEFAULT_MAX_DATA_BYTES
 
     schema_payload = _validate_json_part(package, "schema.json", report)
     profile_payload = _validate_json_part(package, "profile.json", report)
-    _validate_json_part(package, "lineage.json", report)
+    lineage_payload = _validate_json_part(package, "lineage.json", report)
     _validate_json_part(package, "recipe.json", report)
 
     row_key = data.get("row_key")
@@ -301,6 +384,9 @@ def validate_package(package: Path, max_data_bytes: int = DEFAULT_MAX_DATA_BYTES
             report.fail("package_manifest_invalid", f"row_key ссылается на отсутствующие колонки: {missing}.")
         elif table.select(row_key).n_unique() != table.height:
             report.fail("package_manifest_invalid", "row_key не уникален: он не идентифицирует строку.")
+
+    if lineage_payload:
+        validate_lineage_columns(lineage_payload, table.columns, report)
 
     if schema_payload:
         #описание, не соответствующее данным, не должно читаться вовсе: дальше на него

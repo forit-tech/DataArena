@@ -24,10 +24,20 @@ def golden_manifest() -> dict:
     return json.loads((GOLDEN_PACKAGE / "manifest.json").read_text(encoding="utf-8"))
 
 
-def test_api_announces_the_same_version_as_the_golden_package(golden_manifest: dict) -> None:
-    #самая дешёвая рассинхронизация: спецификацию обновили, а константу в API забыли
+def test_api_announces_the_version_the_newest_fixtures_carry(golden_manifest: dict) -> None:
+    #самая дешёвая рассинхронизация: спецификацию обновили, а константу в API забыли.
+    #Эталон — пакет 1.0.0 той же major-версии: старый пакет, который обязан читаться;
+    #фикстуры истории колонок несут версию, которую производит сервис
+    from backend.services.package.builder import PACKAGE_VERSION as PRODUCED
+
+    newest = json.loads(
+        (CONTRACT_ROOT / "golden" / "lineage" / "upload-lineage.dapkg" / "manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert PRODUCED == PACKAGE_VERSION
     assert golden_manifest["format"] == PACKAGE_FORMAT
-    assert golden_manifest["format_version"] == PACKAGE_VERSION
+    assert golden_manifest["format_version"].split(".")[0] == PACKAGE_VERSION.split(".")[0]
+    assert newest["format_version"] == PACKAGE_VERSION
     assert golden_manifest["data"]["content_fingerprint"]["algorithm"] == FINGERPRINT_ALGORITHM
 
 

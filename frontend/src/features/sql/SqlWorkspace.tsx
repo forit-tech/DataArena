@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Ban, Bookmark, Clock, Database, Play, Trash2 } from "lucide-react";
-import { formatCount, formatDuration } from "../../utils/format";
+import { columnsLabel, formatCount, formatDuration, rowsLabel } from "../../utils/format";
 import type { DatasetBinding, QueryRun } from "../../types/sql";
 import { MAX_SQL_LENGTH, useSqlWorkspace } from "./useSqlWorkspace";
 
@@ -38,7 +38,7 @@ export function SqlWorkspace({ workspaceId }: { workspaceId: string | null }) {
       <div className="empty-state">
         <h2 className="empty-state__title">Рабочее пространство не выбрано</h2>
         <p className="empty-state__text">
-          Откройте раздел Workspace: запросы выполняются к датасетам одного рабочего пространства.
+          Откройте раздел «Файлы»: запросы выполняются к датасетам одного рабочего пространства.
         </p>
       </div>
     );
@@ -119,7 +119,7 @@ function ResultView({ response }: { response: NonNullable<ReturnType<typeof useS
   return (
     <div className="sql-result">
       <div className="sql-result__meta">
-        <span>{formatCount(result.row_count)} строк</span>
+        <span>{rowsLabel(result.row_count)}</span>
         <span>{formatDuration(result.elapsed_ms)}</span>
         {run.datasets.length > 0 && <span>датасеты: {run.datasets.join(", ")}</span>}
       </div>
@@ -129,7 +129,7 @@ function ResultView({ response }: { response: NonNullable<ReturnType<typeof useS
         <p className="sql-result__truncated" role="status">
           {result.truncated_by === "bytes"
             ? "Показана часть результата: ответ превысил предел по объёму."
-            : `Показаны первые ${formatCount(result.row_count)} строк: их было больше.`}
+            : `Показаны первые ${rowsLabel(result.row_count)}: их было больше.`}
         </p>
       )}
 
@@ -243,10 +243,17 @@ function BindingList({
 }) {
   return (
     <section className="sql-panel">
-      <h2 className="sql-panel__title">
+      <h2
+        className="sql-panel__title"
+        title="Запрос читает исходные файлы: шаги конвейера к ним не применяются. Почищенные данные — в разделе «Конвейер»."
+      >
         <Database size={14} aria-hidden />
-        Доступно в FROM
+        Таблицы для запроса
       </h2>
+
+      {/*#ограничение версии 0.1: SQL читает исходный артефакт. Молчать об этом нельзя —
+         человек, почистивший данные шагами, получил бы ответ по неочищенным и не понял,
+         почему числа не сходятся с таблицей*/}
 
       {bindings.length === 0 ? (
         <p className="sql-panel__empty">В рабочем пространстве пока нет датасетов.</p>
@@ -259,13 +266,22 @@ function BindingList({
                 className="sql-chip"
                 disabled={!binding.queryable}
                 title={
-                  binding.queryable
-                    ? `${binding.name}: ${binding.column_count} колонок`
-                    : "Датасет недоступен для чтения"
+                  !binding.queryable
+                    ? "Датасет недоступен для чтения"
+                    : (binding.has_pipeline_steps === true || binding.has_pipeline_steps === null)
+                      ? `${binding.name}: ${columnsLabel(binding.column_count)}. У датасета есть шаги конвейера — запрос их не увидит.`
+                      : `${binding.name}: ${columnsLabel(binding.column_count)}`
                 }
                 onClick={() => onPick(binding.alias)}
               >
-                <span className="sql-chip__name">{binding.alias}</span>
+                <span className="sql-chip__name">
+                  {binding.alias}
+                  {(binding.has_pipeline_steps === true || binding.has_pipeline_steps === null) && (
+                    <span className="sql-chip__warning" title="У датасета есть шаги конвейера, которых запрос не увидит">
+                      шаги не применены
+                    </span>
+                  )}
+                </span>
                 <span className="sql-chip__meta">
                   {binding.row_count === null ? "—" : formatCount(binding.row_count)} ×{" "}
                   {binding.column_count}
@@ -341,7 +357,7 @@ function HistoryList({ runs, onOpen }: { runs: QueryRun[]; onOpen: (sql: string)
                 <span className={`sql-history__status sql-history__status--${run.status}`}>
                   {STATUS_LABEL[run.status]}
                   {run.status === "succeeded" && run.row_count !== null
-                    ? ` · ${formatCount(run.row_count)} строк · ${formatDuration(run.elapsed_ms)}`
+                    ? ` · ${rowsLabel(run.row_count)} · ${formatDuration(run.elapsed_ms)}`
                     : ""}
                 </span>
               </button>

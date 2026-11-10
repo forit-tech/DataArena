@@ -1,0 +1,419 @@
+{
+  "columns": [
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "LEFT JOIN: «clients.csv».customer_id → customer_id",
+          "inputs": [
+            "customer_id"
+          ],
+          "kind": "join",
+          "node": "j",
+          "operation": "join",
+          "output": "customer_id",
+          "position": 0,
+          "step_id": null
+        }
+      ],
+      "history": "complete",
+      "name": "customer_id",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "customer_id",
+          "dataset_id": "ds_clients",
+          "dataset_name": "clients.csv",
+          "source": "src_ds_clients",
+          "source_file": "clients.csv",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "LEFT JOIN: «billing.parquet».monthly_spend → monthly_spend",
+          "inputs": [
+            "monthly_spend"
+          ],
+          "kind": "join",
+          "node": "j",
+          "operation": "join",
+          "output": "monthly_spend",
+          "position": 0,
+          "step_id": null
+        }
+      ],
+      "history": "incomplete",
+      "name": "monthly_spend",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "monthly_spend",
+          "dataset_id": "ds_billing",
+          "dataset_name": "billing.parquet",
+          "source": "src_ds_billing",
+          "source_file": "billing.parquet",
+          "source_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      ],
+      "read_by": [
+        "n2"
+      ]
+    },
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "LEFT JOIN: «clients.csv».tenure_months → tenure_months",
+          "inputs": [
+            "tenure_months"
+          ],
+          "kind": "join",
+          "node": "j",
+          "operation": "join",
+          "output": "tenure_months",
+          "position": 0,
+          "step_id": null
+        }
+      ],
+      "history": "complete",
+      "name": "tenure_months",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "tenure_months",
+          "dataset_id": "ds_clients",
+          "dataset_name": "clients.csv",
+          "source": "src_ds_clients",
+          "source_file": "clients.csv",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "LEFT JOIN: «clients.csv».plan → plan",
+          "inputs": [
+            "plan"
+          ],
+          "kind": "join",
+          "node": "j",
+          "operation": "join",
+          "output": "plan",
+          "position": 0,
+          "step_id": null
+        }
+      ],
+      "history": "complete",
+      "name": "plan",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "plan",
+          "dataset_id": "ds_clients",
+          "dataset_name": "clients.csv",
+          "source": "src_ds_clients",
+          "source_file": "clients.csv",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [
+        {
+          "dataset_id": "ds_clients",
+          "dataset_name": "clients.csv",
+          "description": "trim_whitespace: city → city",
+          "inputs": [
+            "city"
+          ],
+          "kind": "step",
+          "node": "jl1",
+          "operation": "trim_whitespace",
+          "output": "city",
+          "position": 1,
+          "step_id": "s1"
+        },
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "LEFT JOIN: «clients.csv».city → city",
+          "inputs": [
+            "city"
+          ],
+          "kind": "join",
+          "node": "j",
+          "operation": "join",
+          "output": "city",
+          "position": 0,
+          "step_id": null
+        },
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "change_case: city → city",
+          "inputs": [
+            "city"
+          ],
+          "kind": "step",
+          "node": "n1",
+          "operation": "change_case",
+          "output": "city",
+          "position": 1,
+          "step_id": "s1"
+        }
+      ],
+      "history": "complete",
+      "name": "city",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "city",
+          "dataset_id": "ds_clients",
+          "dataset_name": "clients.csv",
+          "source": "src_ds_clients",
+          "source_file": "clients.csv",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "LEFT JOIN: «clients.csv».signup_date → signup_date",
+          "inputs": [
+            "signup_date"
+          ],
+          "kind": "join",
+          "node": "j",
+          "operation": "join",
+          "output": "signup_date",
+          "position": 0,
+          "step_id": null
+        }
+      ],
+      "history": "complete",
+      "name": "signup_date",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "signup_date",
+          "dataset_id": "ds_clients",
+          "dataset_name": "clients.csv",
+          "source": "src_ds_clients",
+          "source_file": "clients.csv",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "LEFT JOIN: «billing.parquet».churned → churned",
+          "inputs": [
+            "churned"
+          ],
+          "kind": "join",
+          "node": "j",
+          "operation": "join",
+          "output": "churned",
+          "position": 0,
+          "step_id": null
+        }
+      ],
+      "history": "incomplete",
+      "name": "churned",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "churned",
+          "dataset_id": "ds_billing",
+          "dataset_name": "billing.parquet",
+          "source": "src_ds_billing",
+          "source_file": "billing.parquet",
+          "source_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers ⋈ billing.parquet",
+          "description": "LEFT JOIN: «clients.csv».internal_note → internal_note",
+          "inputs": [
+            "internal_note"
+          ],
+          "kind": "join",
+          "node": "j",
+          "operation": "join",
+          "output": "internal_note",
+          "position": 0,
+          "step_id": null
+        }
+      ],
+      "history": "complete",
+      "name": "internal_note",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "internal_note",
+          "dataset_id": "ds_clients",
+          "dataset_name": "clients.csv",
+          "source": "src_ds_clients",
+          "source_file": "clients.csv",
+          "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "read_by": []
+    }
+  ],
+  "created_at": "2026-09-06T18:42:11.482Z",
+  "format_version": "1.1.0",
+  "graph": [
+    {
+      "id": "jl0",
+      "inputs": [],
+      "op": "read",
+      "source": "src_ds_clients"
+    },
+    {
+      "id": "jl1",
+      "inputs": [
+        "jl0"
+      ],
+      "op": "trim_whitespace",
+      "params": {
+        "columns": [
+          "city"
+        ]
+      }
+    },
+    {
+      "id": "jr0",
+      "inputs": [],
+      "op": "read",
+      "source": "src_ds_billing"
+    },
+    {
+      "id": "jr1",
+      "inputs": [
+        "jr0"
+      ],
+      "op": "fill_missing",
+      "params": {
+        "column": "monthly_spend",
+        "value": "0"
+      }
+    },
+    {
+      "id": "j",
+      "inputs": [
+        "jl1",
+        "jr1"
+      ],
+      "op": "join",
+      "params": {
+        "keys": [
+          {
+            "left": "customer_id",
+            "right": "customer_id"
+          }
+        ],
+        "kind": "left",
+        "right_suffix": "_2"
+      }
+    },
+    {
+      "id": "n0",
+      "inputs": [
+        "j"
+      ],
+      "op": "read",
+      "source": "src_customers"
+    },
+    {
+      "id": "n1",
+      "inputs": [
+        "n0"
+      ],
+      "op": "change_case",
+      "params": {
+        "case": "lower",
+        "columns": [
+          "city"
+        ]
+      }
+    },
+    {
+      "id": "n2",
+      "inputs": [
+        "n1"
+      ],
+      "op": "sort_rows",
+      "output_rows": 12,
+      "params": {
+        "column": "monthly_spend"
+      }
+    }
+  ],
+  "package_id": "pkg_01J8ZK4M7Q2N5X",
+  "provenance": {
+    "history": "incomplete",
+    "origin": "join",
+    "status": "known",
+    "unknown_reason": null,
+    "warnings": [
+      "parent_history_truncated"
+    ]
+  },
+  "row_count_trace": [
+    {
+      "after": "n2",
+      "rows": 12
+    }
+  ],
+  "sources": [
+    {
+      "column_count": 8,
+      "format": "parquet",
+      "id": "src_customers",
+      "name": "customers ⋈ billing.parquet",
+      "row_count": 14,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "format": "csv",
+      "id": "src_ds_clients",
+      "kind": "dataset",
+      "name": "clients.csv",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "format": "parquet",
+      "id": "src_ds_billing",
+      "kind": "dataset",
+      "name": "billing.parquet",
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  ]
+}

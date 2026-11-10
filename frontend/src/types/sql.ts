@@ -38,6 +38,9 @@ export type DatasetBinding = {
   column_count: number;
   columns: string[];
   queryable: boolean;
+  //#у датасета есть шаги конвейера, которых SQL не видит: запрос читает исходный файл.
+  //#null — конвейер не читается, и есть ли шаги, неизвестно: предупреждение показывается
+  has_pipeline_steps?: boolean | null;
 };
 
 export type SavedQuery = {

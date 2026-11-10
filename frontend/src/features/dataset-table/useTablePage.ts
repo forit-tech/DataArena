@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { describeError, isCancelled } from "../../api/client";
 import { fetchRows } from "../../api/endpoints";
+import type { RowSource } from "../../api/endpoints";
 import type { ColumnFilter, Page, SortDirection } from "../../types/dataset";
 
 export type TableQuery = {
@@ -30,7 +31,12 @@ type State = {
   error: string | null;
 };
 
-export function useTablePage(workspaceId: string, datasetId: string, query: TableQuery) {
+export function useTablePage(
+  workspaceId: string,
+  datasetId: string,
+  query: TableQuery,
+  source: RowSource = "dataset",
+) {
   const [state, setState] = useState<State>({ page: null, isLoading: true, error: null });
 
   //#каждый запрос получает номер, и применяется результат только последнего
@@ -51,7 +57,7 @@ export function useTablePage(workspaceId: string, datasetId: string, query: Tabl
 
     void (async () => {
       try {
-        const page = await fetchRows(workspaceId, datasetId, query, controller.signal);
+        const page = await fetchRows(workspaceId, datasetId, query, controller.signal, source);
 
         if (current === requestId.current) {
           setState({ page, isLoading: false, error: null });
@@ -69,7 +75,7 @@ export function useTablePage(workspaceId: string, datasetId: string, query: Tabl
         });
       }
     })();
-  }, [workspaceId, datasetId, query]);
+  }, [workspaceId, datasetId, query, source]);
 
   useEffect(() => {
     load();

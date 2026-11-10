@@ -16,6 +16,10 @@ export type VirtualRowsProps = {
   height: number;
   renderRow: (index: number) => ReactNode;
   onScrollNearEnd?: () => void;
+  //#шапка живёт внутри той же области прокрутки и прилипает сверху: так у таблицы
+  //#одна полоса прокрутки по каждой оси, а шапка двигается вместе со столбцами
+  header?: ReactNode;
+  contentWidth?: number;
 };
 
 export function VirtualRows({
@@ -24,6 +28,8 @@ export function VirtualRows({
   height,
   renderRow,
   onScrollNearEnd,
+  header,
+  contentWidth,
 }: VirtualRowsProps) {
   const viewport = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -77,7 +83,8 @@ export function VirtualRows({
         }
       }}
     >
-      <div className="vspacer" style={{ height: rowCount * rowHeight }}>
+      {header}
+      <div className="vspacer" style={{ height: rowCount * rowHeight, width: contentWidth }}>
         {rows}
       </div>
     </div>

@@ -35,6 +35,10 @@ from backend.domain.health.models import (
 from backend.domain.health.thresholds import THRESHOLDS
 from backend.domain.health.wording import rows as say_rows
 from backend.domain.health.wording import values as say_values
+from backend.services.health.filter_values import (
+    ValueNotStorableError,
+    encode_filter_value,
+)
 from backend.services.health.predicates import count_affected
 
 #за этим объёмом точный подсчёт различных значений перестаёт быть дешёвым, и вместо него
@@ -44,6 +48,17 @@ APPROXIMATE_CARDINALITY_CELLS = 20_000_000
 #доминирующее значение имеет смысл искать, только когда значений хотя бы два:
 #у колонки с одним значением это уже отдельная находка
 MIN_UNIQUE_FOR_DOMINANT = 2
+
+
+def _is_textual(dtype: pl.DataType) -> bool:
+    """Текст ли это с точки зрения человека, а не хранилища.
+
+    `Categorical` и `Enum` — это тот же текст, просто записанный словарём: так parquet
+    пишут pandas и pyarrow по умолчанию. Пока проверка смотрела только на `Utf8`, такая
+    колонка молча минула разнописание регистра, краевые пробелы, пустые строки и мусор
+    среди чисел — и отчёт говорил «ничего не нашли», хотя ничего и не искал.
+    """
+    return dtype == pl.Utf8 or isinstance(dtype, pl.Categorical | pl.Enum)
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +142,7 @@ def _facts_expressions(name: str, dtype: pl.DataType, *, approximate: bool) -> l
         unique.alias(f"unique::{name}"),
     ]
 
-    if dtype == pl.Utf8:
+    if _is_textual(dtype):
         expressions += [
             (text.str.len_chars() == 0).sum().alias(f"empty::{name}"),
             (text != text.str.strip_chars()).fill_null(value=False).sum().alias(f"ws::{name}"),
@@ -417,7 +432,7 @@ def _empty_versus_null(facts: ColumnFacts, total_rows: int) -> list[Finding]:
 
 def _not_numeric(facts: ColumnFacts, total_rows: int) -> list[Finding]:
     #смесь смыслов: колонка текстовая, но почти всё в ней — числа
-    if facts.dtype != pl.Utf8 or facts.not_numeric == 0 or facts.filled == 0:
+    if not _is_textual(facts.dtype) or facts.not_numeric == 0 or facts.filled == 0:
         return []
 
     minority = facts.not_numeric / facts.filled
@@ -458,11 +473,19 @@ def _not_numeric(facts: ColumnFacts, total_rows: int) -> list[Finding]:
 def _case_variants(
     lazy: pl.LazyFrame, schema: pl.Schema, facts: ColumnFacts, total_rows: int
 ) -> list[Finding]:
-    if facts.dtype != pl.Utf8 or facts.normalised_unique >= facts.unique or facts.unique == 0:
+    if not _is_textual(facts.dtype) or facts.normalised_unique >= facts.unique or facts.unique == 0:
+        return []
+
+    #граница применимости, а не осторожность: см. max_case_variant_unique. Колонка
+    #с миллионами различных значений — это адрес или комментарий, и группировать её
+    #ради «Москва» против «москва» стоит гигабайт памяти при нулевом смысле
+    if facts.unique > THRESHOLDS.max_case_variant_unique:
         return []
 
     #группировка по нормализованному значению нужна только здесь и только для колонок,
-    #где расхождение уже обнаружено батареей: считать её для всех подряд дорого
+    #где расхождение уже обнаружено батареей: считать её для всех подряд дорого.
+    #Списки примеров тут больше не собираются — они стоили ещё двести мегабайт сверху,
+    #а нужны всего для трёх групп, и дешевле спросить их отдельно
     grouped = (
         lazy.select(
             pl.col(facts.name).cast(pl.Utf8, strict=False).alias("__raw__"),
@@ -472,29 +495,25 @@ def _case_variants(
             pl.col("__raw__").str.strip_chars().str.to_lowercase().alias("__norm__"),
         )
         .group_by("__norm__")
-        .agg(
-            pl.col("__raw__").n_unique().alias("__variants__"),
-            pl.col("__raw__").unique().alias("__examples__"),
-        )
+        .agg(pl.col("__raw__").n_unique().alias("__variants__"))
         .filter(pl.col("__variants__") > 1)
         .sort("__variants__", descending=True)
-        .head(THRESHOLDS.max_filter_values)
         .collect()
     )
 
     if grouped.height == 0:
         return []
 
-    offending = tuple(grouped["__norm__"].to_list())
+    #полное число расходящихся групп, а не усечённое. Прежде в находку попадало число
+    #показанных групп: при пятистах расхождениях она сообщала «записаны по-разному:
+    #200 значений», человек исправлял их, открывал заново — и видел следующие 200
+    total_groups = grouped.height
+    offending = tuple(grouped["__norm__"].to_list()[: THRESHOLDS.max_filter_values])
     row_filter = RowFilter(
         kind=RowFilterKind.NORMALISED_IN_VALUES, columns=(facts.name,), values=offending
     )
     affected = count_affected(lazy, row_filter, schema)
-    examples = [
-        _shorten(value)
-        for group in grouped["__examples__"].to_list()[:3]
-        for value in list(group)[:3]
-    ]
+    examples = _variant_examples(lazy, facts.name, offending[:3])
 
     return [
         Finding(
@@ -504,15 +523,21 @@ def _case_variants(
             columns=(facts.name,),
             title=f"Значения, различающиеся только регистром или пробелами, в «{facts.name}»",
             explanation=(
-                f"Записаны по-разному: {say_values(len(offending))}. «Москва» и «москва» "
+                f"Записаны по-разному: {say_values(total_groups)}. «Москва» и «москва» "
                 "считаются разными категориями при группировке, объединении и сравнении, "
                 "хотя для человека это одно и то же."
+                + (
+                    f" Строки показаны для {len(offending)} групп из {total_groups}: "
+                    "остальные не помещаются в описание находки."
+                    if total_groups > len(offending)
+                    else ""
+                )
             ),
             affected_rows=affected,
             affected_ratio=affected / total_rows,
             evidence=Evidence(
                 values=tuple(examples[: THRESHOLDS.max_evidence_values]),
-                counts={"groups": len(offending)},
+                counts={"groups": total_groups, "groups_shown": len(offending)},
             ),
             suggested_action=SuggestedAction(
                 kind=ActionKind.NORMALISE_CASE,
@@ -522,6 +547,29 @@ def _case_variants(
             row_filter=row_filter,
         )
     ]
+
+
+def _variant_examples(lazy: pl.LazyFrame, column: str, groups: tuple[str, ...]) -> list[Any]:
+    """Примеры написаний для нескольких групп — отдельным дешёвым запросом.
+
+    Раньше примеры собирались агрегатом `unique()` по **всем** группам сразу: для
+    высококардинальной колонки это список различных значений на всю колонку, и стоил он
+    сотни мегабайт ради девяти строк на экране.
+    """
+    if not groups:
+        return []
+
+    raw = pl.col(column).cast(pl.Utf8, strict=False)
+    normalised = raw.str.strip_chars().str.to_lowercase()
+    found = (
+        lazy.filter(normalised.is_in(list(groups)))
+        .select(raw.alias("__raw__"))
+        .unique()
+        .head(9)
+        .collect()
+    )
+
+    return [_shorten(value) for value in found["__raw__"].to_list()]
 
 
 def _shape_of_values(
@@ -551,6 +599,10 @@ def _shape_of_values(
                     "Во всех заполненных строках одно и то же значение. Такая колонка "
                     "ничего не различает: она не влияет ни на группировку, ни на модель."
                 ),
+                #постоянство выведено из кардинальности, а за порогом она приближённая:
+                #подписать такую находку «точный подсчёт» — значит выдать оценку за факт
+                exactness=exactness,
+                sampled_rows=sampled_rows,
                 affected_rows=None,
                 affected_ratio=None,
                 evidence=Evidence(counts={"unique": 1}),
@@ -589,9 +641,15 @@ def _shape_of_values(
             )
         )
 
-        if facts.unique < facts.filled:
-            duplicates = RowFilter(kind=RowFilterKind.DUPLICATED_BY, columns=(facts.name,))
-            affected = count_affected(lazy, duplicates, schema)
+        duplicates = RowFilter(kind=RowFilterKind.DUPLICATED_BY, columns=(facts.name,))
+        #повторы считаются предикатом, а не выводятся из кардинальности. Это важно:
+        #за порогом кардинальность приближённая, и HyperLogLog ошибается на доли процента.
+        #Недооценка на 26 значений из 100 000 рождала предупреждение «0 строк повторяют
+        #значение» — с работающей кнопкой в пустую таблицу и подписью «точный подсчёт».
+        #Поэтому условие теперь не «оценка меньше заполненных», а «повторы действительно есть»
+        affected = count_affected(lazy, duplicates, schema)
+
+        if affected > 0:
             findings.append(
                 Finding(
                     code=CheckCode.DUPLICATE_KEYS,
@@ -604,6 +662,9 @@ def _shape_of_values(
                         "уникальны. У колонки, похожей на ключ, повторы обычно означают "
                         "ошибку выгрузки или случайное объединение."
                     ),
+                    #число здесь точное даже за порогом приближения: приближённой была
+                    #только догадка «посмотреть эту колонку», а сами строки посчитаны
+                    #предикатом — тем же, которым их потом покажут
                     affected_rows=affected,
                     affected_ratio=affected / total_rows,
                     evidence=Evidence(counts={"unique": facts.unique, "filled": facts.filled}),
@@ -664,10 +725,36 @@ def _near_constant(
     if dominant is None:
         return []
 
-    row_filter = RowFilter(
-        kind=RowFilterKind.NOT_EQUALS, columns=(facts.name,), values=(dominant,)
-    )
-    others = count_affected(lazy, row_filter, schema)
+    try:
+        stored: Any | None = encode_filter_value(dominant, schema[facts.name])
+    except ValueNotStorableError:
+        #значение не укладывается в предикат: либо это список или структура, где `mode()`
+        #отдаёт не значение, а Series, либо строка такой длины, что хранить её в отчёте
+        #нельзя. Находка при этом остаётся верной — исчезает только провал в строки
+        stored = None
+
+    if stored is None:
+        row_filter = None
+
+        try:
+            #считаем исходным значением: предиката не будет, но само наблюдение верно.
+            #У колонки списков и структур это не получится — `mode()` отдаёт Series,
+            #и сравнение с ним падает. Тогда находки не будет вовсе: лучше промолчать,
+            #чем показать число, которое никто не смог посчитать
+            others = int(
+                lazy.filter(pl.col(facts.name).ne_missing(dominant))
+                .select(pl.len())
+                .collect()
+                .item()
+            )
+        except Exception:  # noqa: BLE001 - значение непригодно и для сравнения тоже
+            return []
+    else:
+        row_filter = RowFilter(
+            kind=RowFilterKind.NOT_EQUALS, columns=(facts.name,), values=(stored,)
+        )
+        others = count_affected(lazy, row_filter, schema)
+
     share = (total_rows - others) / total_rows
 
     if share < THRESHOLDS.near_constant_share:

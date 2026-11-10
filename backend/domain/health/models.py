@@ -327,6 +327,10 @@ class HealthReport:
     computed_at: datetime
     total_rows: int
     findings: tuple[Finding, ...]
+    #отпечаток артефакта берётся из записи датасета и не меняется, если файл подменили
+    #мимо DataArena. Метка файла — его размер и время правки — меняется, и отчёт,
+    #описывающий то, чего уже нет, перестаёт выдаваться за актуальный
+    artifact_stamp: str = ""
 
     @property
     def summary(self) -> dict[str, int]:

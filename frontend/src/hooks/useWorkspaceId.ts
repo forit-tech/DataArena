@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { describeError } from "../api/client";
-import { createWorkspace } from "../api/endpoints";
+import { ApiError, describeError } from "../api/client";
+import { createWorkspace, fetchWorkspace } from "../api/endpoints";
 
 const WORKSPACE_STORAGE_KEY = "DataArenaWorkspaceId";
 
@@ -13,12 +13,27 @@ export function useWorkspaceId() {
   const [isLoading, setIsLoading] = useState(true);
 
   const open = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
     try {
       const stored = localStorage.getItem(WORKSPACE_STORAGE_KEY);
 
       if (stored) {
-        setWorkspaceId(stored);
-        return;
+        //#сохранённый идентификатор проверяется: база могла быть очищена или пространство
+        //#удалено. Прежде такой идентификатор принимался навсегда, и все разделы отвечали
+        //#«не найдено» до ручной очистки хранилища браузера
+        try {
+          await fetchWorkspace(stored);
+          setWorkspaceId(stored);
+          return;
+        } catch (caught) {
+          if (!(caught instanceof ApiError && caught.status === 404)) {
+            throw caught;
+          }
+
+          localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+        }
       }
 
       const workspace = await createWorkspace("Рабочее пространство");
@@ -35,5 +50,5 @@ export function useWorkspaceId() {
     void open();
   }, [open]);
 
-  return { workspaceId, error, isLoading };
+  return { workspaceId, error, isLoading, retry: open };
 }

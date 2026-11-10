@@ -12,6 +12,10 @@ import polars as pl
 
 from backend.core.errors import AppError
 from backend.domain.health.models import RowFilter, RowFilterKind
+from backend.services.health.filter_values import (
+    ValueNotStorableError,
+    decode_filter_value,
+)
 
 
 class FindingNotApplicableError(AppError):
@@ -37,7 +41,15 @@ def row_filter_expression(spec: RowFilter, schema: pl.Schema) -> pl.Expr:
             "Этот вид находки не умеет показывать строки.", details={"kind": spec.kind.value}
         )
 
-    return builder(spec, schema)
+    try:
+        return builder(spec, schema)
+    except ValueNotStorableError as error:
+        #предикат сохранён прежней версией проверок для типа, который больше не
+        #поддерживается. Показать «похожие» строки вместо тех самых нельзя
+        raise FindingNotApplicableError(
+            "Эта находка больше не может показать свои строки: тип колонки изменился.",
+            details={"column": spec.columns[0]},
+        ) from error
 
 
 def _is_null(spec: RowFilter, _: pl.Schema) -> pl.Expr:
@@ -56,10 +68,14 @@ def _is_nan_or_inf(spec: RowFilter, _: pl.Schema) -> pl.Expr:
     return (column.is_nan() | column.is_infinite()).fill_null(value=False)
 
 
-def _not_equals(spec: RowFilter, _: pl.Schema) -> pl.Expr:
+def _not_equals(spec: RowFilter, schema: pl.Schema) -> pl.Expr:
+    #значение восстанавливается типизированно, а не берётся из хранилища как есть:
+    #в JSON дата лежит строкой, длительность — целым, двоичное — base64, и сравнение
+    #колонки с таким «сырым» значением либо падает, либо отбирает другие строки
+    value = decode_filter_value(spec.values[0], schema[spec.columns[0]])
     #ne_missing сравнивает и пропуски: без него строки с пропуском выпали бы из выборки,
     #хотя они тоже «не равны доминирующему значению»
-    return pl.col(spec.columns[0]).ne_missing(spec.values[0])
+    return pl.col(spec.columns[0]).ne_missing(value)
 
 
 def _in_values(spec: RowFilter, _: pl.Schema) -> pl.Expr:

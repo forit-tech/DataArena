@@ -50,3 +50,47 @@ export type HealthReport = {
   summary: HealthSummary;
   findings: Finding[];
 };
+
+//#исправление находки шагом конвейера: совет, предпросмотр и результат применения
+export type RepairSafety = "safe" | "lossy" | "decision";
+
+export type RepairStep = { kind: string; params: Record<string, unknown>; description: string };
+
+export type RepairOption = {
+  option_id: string;
+  title: string;
+  safety: RepairSafety;
+  note: string;
+  steps: RepairStep[];
+};
+
+export type RepairAdvice = {
+  finding_id: string;
+  code: string;
+  columns: string[];
+  explanation: { cause: string; consequence: string; approach: string };
+  options: RepairOption[];
+  manual_reason: string;
+  steps_fingerprint: string;
+  source: "rules" | "ai";
+};
+
+export type RepairPreview = {
+  finding_id: string;
+  option: RepairOption;
+  steps_fingerprint: string;
+  rows_before: number;
+  rows_after: number;
+  rows_removed: number;
+  columns_before: number;
+  columns_after: number;
+  columns_removed: string[];
+  values_lost: number;
+  changed_rows: number;
+  samples: Array<{ column: string; before: string | null; after: string | null; rows: number }>;
+};
+
+export type RepairApplied = {
+  applied: Array<{ step_id: string; kind: string; params: Record<string, unknown> }>;
+  option: RepairOption;
+};

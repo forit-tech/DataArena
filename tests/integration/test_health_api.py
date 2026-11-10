@@ -393,3 +393,74 @@ def test_a_dataset_the_reader_cannot_open_is_a_domain_error(
 
     assert response.status_code == 404
     assert "C:/" not in str(response.json())
+
+
+def test_health_diagnoses_the_result_of_the_pipeline(client: TestClient, workspace_id: str) -> None:
+    """Исправил шагом — находка обязана исчезнуть.
+
+    Диагностика отвечает на вопрос «что не так с данными, с которыми я работаю».
+    Если бы она читала исходный файл, человек, убравший разнописание регистра, снова
+    увидел бы находку о разнописании — и перестал бы верить разделу.
+    """
+    dataset = upload(
+        client,
+        workspace_id,
+        pl.DataFrame({"город": ["Москва", "москва", "Казань", "казань"] * 10}),
+        "города.parquet",
+    )
+    base = f"/api/workspaces/{workspace_id}/datasets/{dataset['dataset_id']}"
+
+    before = client.get(f"{base}/health").json()
+    assert "case_variant_categories" in {item["code"] for item in before["findings"]}
+
+    client.put(
+        f"{base}/pipeline",
+        json={
+            "steps": [
+                {"step_id": "s1", "kind": "change_case", "params": {"columns": ["город"], "case": "lower"}}
+            ]
+        },
+    )
+
+    after = client.get(f"{base}/health").json()
+
+    assert "case_variant_categories" not in {item["code"] for item in after["findings"]}, (
+        "находка осталась после того, как её причину убрали шагом"
+    )
+
+
+def test_finding_rows_come_from_the_same_data_that_was_diagnosed(
+    client: TestClient, workspace_id: str
+) -> None:
+    #диагностика смотрит на результат конвейера, значит и строки находки берутся оттуда же
+    dataset = upload(
+        client,
+        workspace_id,
+        pl.DataFrame(
+            {"город": ["Москва ", "москва", "Казань", None] * 10, "n": list(range(40))}
+        ),
+        "строки.parquet",
+    )
+    base = f"/api/workspaces/{workspace_id}/datasets/{dataset['dataset_id']}"
+
+    client.put(
+        f"{base}/pipeline",
+        json={
+            "steps": [
+                {"step_id": "s1", "kind": "drop_rows", "params": {"column": "n", "operator": "lt", "value": "20"}}
+            ]
+        },
+    )
+
+    report = client.get(f"{base}/health").json()
+
+    for finding in report["findings"]:
+        if not finding["has_affected_rows"]:
+            continue
+
+        page = client.get(
+            f"{base}/pipeline/rows",
+            params={"finding": finding["finding_id"], "limit": 200},
+        ).json()
+
+        assert page["total_rows"] == finding["affected_rows"], finding["code"]

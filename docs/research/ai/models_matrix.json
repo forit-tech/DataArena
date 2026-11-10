@@ -1,0 +1,59 @@
+{
+  "criteria": [
+    {
+      "key": "accuracy",
+      "label": "Доля правильных советов",
+      "direction": "max",
+      "group": "quality",
+      "weight": 4
+    },
+    {
+      "key": "rejected_share",
+      "label": "Доля ответов с выдуманными ссылками",
+      "direction": "min",
+      "group": "quality",
+      "weight": 2
+    },
+    {
+      "key": "median_seconds",
+      "label": "Время ответа (медиана)",
+      "direction": "min",
+      "unit": "с",
+      "group": "time",
+      "weight": 2
+    },
+    {
+      "key": "size_gb",
+      "label": "Размер модели",
+      "direction": "min",
+      "unit": "ГБ",
+      "group": "size",
+      "weight": 1
+    }
+  ],
+  "alternatives": [
+    {
+      "key": "qwen3:8b",
+      "label": "qwen3:8b",
+      "values": {
+        "accuracy": {
+          "value": 0.9
+        },
+        "rejected_share": {
+          "value": 0.0
+        },
+        "median_seconds": {
+          "value": 18.43
+        },
+        "size_gb": {
+          "value": 5.23
+        }
+      }
+    }
+  ],
+  "primary": "accuracy",
+  "context": {
+    "source": "scripts/research/ai_benchmark.py",
+    "machine": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD"
+  }
+}

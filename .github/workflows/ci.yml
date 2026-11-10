@@ -60,6 +60,30 @@ jobs:
       - name: Fingerprint reproducibility (J-6)
         run: python docs/contracts/reference/check_reproducibility.py
 
+  contract-sync:
+    # каталог контракта лежит в двух репозиториях и обязан быть побайтово одинаковым.
+    # Проверяется весь каталог — схемы, валидатор, фикстуры, спецификация, — а не один golden
+    name: Contract sync (SHA256SUMS + ModelArena mirror)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: forit-tech/ModelArena
+          path: modelarena
+          sparse-checkout: contracts/dataset-package/v1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Contract directory matches SHA256SUMS
+        run: python docs/contracts/reference/contract_digest.py docs/contracts
+
+      - name: ModelArena mirror is byte-identical
+        run: python docs/contracts/reference/contract_digest.py --compare docs/contracts modelarena/contracts/dataset-package/v1
+
   frontend:
     name: Frontend (lint, typecheck, tests, build)
     runs-on: ubuntu-latest

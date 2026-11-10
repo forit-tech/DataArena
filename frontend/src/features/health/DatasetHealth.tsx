@@ -1,8 +1,12 @@
-import { AlertOctagon, AlertTriangle, Info, Loader2, RefreshCw, Rows3 } from "lucide-react";
+import { useState } from "react";
+import { AlertOctagon, AlertTriangle, Info, Loader2, RefreshCw, Rows3, Undo2, Wand2 } from "lucide-react";
+import { describeError } from "../../api/client";
+import { undoPipeline } from "../../api/endpoints";
 import type { LucideIcon } from "lucide-react";
 import { formatCount, formatRatio, plural } from "../../utils/format";
 import type { Dataset } from "../../types/dataset";
-import type { Finding, Severity } from "../../types/health";
+import type { Finding, RepairApplied, Severity } from "../../types/health";
+import { RepairPanel } from "./RepairPanel";
 import { useDatasetHealth } from "./useDatasetHealth";
 
 type SeverityMeta = {
@@ -33,6 +37,39 @@ export function DatasetHealth({ dataset, onShowRows }: DatasetHealthProps) {
   const { report, isLoading, error, reload } = useDatasetHealth(
     dataset.workspace_id,
     dataset.dataset_id,
+  );
+  //#последнее применённое исправление: его можно откатить одной кнопкой
+  const [applied, setApplied] = useState<RepairApplied | null>(null);
+  const [undoError, setUndoError] = useState<string | null>(null);
+  //#пропущенные находки скрываются только в этом сеансе: данные они не меняют
+  const [skipped, setSkipped] = useState<Set<string>>(() => new Set());
+  const [showSkipped, setShowSkipped] = useState(false);
+
+  const undo = async () => {
+    setUndoError(null);
+    try {
+      await undoPipeline(dataset.workspace_id, dataset.dataset_id);
+      setApplied(null);
+      reload();
+    } catch (reason) {
+      setUndoError(describeError(reason, "Откат не выполнен."));
+    }
+  };
+
+  const appliedBanner = applied && (
+    <div className="banner banner--info repair-done" role="status">
+      <div>
+        <p className="banner__title">Исправлено: {applied.option.title}</p>
+        <p className="banner__text">
+          Добавлено шагов в конвейер: {applied.applied.length}. Откат вернёт данные в точности как были.
+        </p>
+        {undoError && <p className="banner__text">{undoError}</p>}
+      </div>
+      <button type="button" className="button" onClick={() => void undo()}>
+        <Undo2 size={14} aria-hidden />
+        Откатить
+      </button>
+    </div>
   );
 
   if (isLoading) {
@@ -71,6 +108,8 @@ export function DatasetHealth({ dataset, onShowRows }: DatasetHealthProps) {
 
   if (report.findings.length === 0) {
     return (
+      <>
+      {appliedBanner}
       <div className="empty-state">
         <h2 className="empty-state__title">Проверки ничего не нашли</h2>
         <p className="empty-state__text">
@@ -79,8 +118,12 @@ export function DatasetHealth({ dataset, onShowRows }: DatasetHealthProps) {
             : `Просмотрено ${formatCount(report.total_rows)} ${plural(report.total_rows, "строка", "строки", "строк")}: пропусков, дубликатов и других отклонений не обнаружено.`}
         </p>
       </div>
+      </>
     );
   }
+
+  const visible = report.findings.filter((finding) => showSkipped || !skipped.has(finding.finding_id));
+  const hiddenCount = report.findings.filter((finding) => skipped.has(finding.finding_id)).length;
 
   return (
     <div className="health">
@@ -114,9 +157,28 @@ export function DatasetHealth({ dataset, onShowRows }: DatasetHealthProps) {
         </button>
       </header>
 
+      {appliedBanner}
+
+      {hiddenCount > 0 && (
+        <button type="button" className="button button--ghost health__skipped" onClick={() => setShowSkipped((v) => !v)}>
+          {showSkipped ? "Скрыть пропущенные" : `Показать пропущенные (${hiddenCount})`}
+        </button>
+      )}
+
       <ul className="health__list">
-        {report.findings.map((finding) => (
-          <FindingCard key={finding.finding_id} finding={finding} onShowRows={onShowRows} />
+        {visible.map((finding) => (
+          <FindingCard
+            key={finding.finding_id}
+            finding={finding}
+            workspaceId={dataset.workspace_id}
+            datasetId={dataset.dataset_id}
+            onShowRows={onShowRows}
+            onApplied={(result) => {
+              setApplied(result);
+              reload();
+            }}
+            onSkip={() => setSkipped((previous) => new Set(previous).add(finding.finding_id))}
+          />
         ))}
       </ul>
     </div>
@@ -125,13 +187,22 @@ export function DatasetHealth({ dataset, onShowRows }: DatasetHealthProps) {
 
 function FindingCard({
   finding,
+  workspaceId,
+  datasetId,
   onShowRows,
+  onApplied,
+  onSkip,
 }: {
   finding: Finding;
+  workspaceId: string;
+  datasetId: string;
   onShowRows: (finding: Finding) => void;
+  onApplied: (applied: RepairApplied) => void;
+  onSkip: () => void;
 }) {
   const meta = SEVERITY[finding.severity];
   const Icon = meta.icon;
+  const [repairOpen, setRepairOpen] = useState(false);
 
   return (
     <li className={`finding ${meta.className}`}>
@@ -159,7 +230,10 @@ function FindingCard({
         {finding.exactness === "sampled" ? (
           <span className="finding__exactness finding__exactness--sampled">
             оценка по выборке
-            {finding.sampled_rows !== null && ` из ${formatCount(finding.sampled_rows)} строк`}
+            {finding.sampled_rows !== null &&
+              //#после «из» падеж другой, чем в обычной подписи: «из 20 001 строки»,
+              //#но «из 2 строк» — поэтому здесь не rowsLabel, а своя тройка форм
+              ` из ${formatCount(finding.sampled_rows)} ${plural(finding.sampled_rows, "строки", "строк", "строк")}`}
           </span>
         ) : (
           <span className="finding__exactness">точный подсчёт</span>
@@ -189,10 +263,30 @@ function FindingCard({
           </button>
         )}
 
-        {finding.suggested_action && (
+        <button
+          type="button"
+          className="button"
+          aria-expanded={repairOpen}
+          onClick={() => setRepairOpen((value) => !value)}
+        >
+          <Wand2 size={14} aria-hidden />
+          Как исправить?
+        </button>
+
+        {finding.suggested_action && !repairOpen && (
           <span className="finding__suggestion">{finding.suggested_action.hint}</span>
         )}
       </div>
+
+      {repairOpen && (
+        <RepairPanel
+          workspaceId={workspaceId}
+          datasetId={datasetId}
+          findingId={finding.finding_id}
+          onApplied={onApplied}
+          onSkip={onSkip}
+        />
+      )}
     </li>
   );
 }

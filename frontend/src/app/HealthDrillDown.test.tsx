@@ -112,7 +112,6 @@ function page(totalRows: number) {
     offset: 0,
     limit: 200,
     total_rows: totalRows,
-    total_is_exact: true,
   };
 }
 
@@ -160,7 +159,7 @@ async function openHealth(user: ReturnType<typeof userEvent.setup>): Promise<voi
   render(<App />);
 
   await user.click(await screen.findByText("продажи.csv"));
-  await user.click(screen.getByRole("button", { name: "Health" }));
+  await user.click(screen.getByRole("button", { name: "Качество" }));
   await screen.findByText(FINDING.title);
 }
 
@@ -187,9 +186,9 @@ describe("путь от находки к строкам", () => {
 
     await user.click(screen.getByRole("button", { name: /Показать строки/ }));
 
-    expect(await screen.findByText(/Показаны строки находки/)).toBeInTheDocument();
+    const banner = (await screen.findByText(/Показаны строки находки/)).closest('[role="status"]');
     //#число совпадает с тем, что назвала находка: иначе доверия к разделу не останется
-    expect(screen.getByText(/127 строк/)).toBeInTheDocument();
+    expect(banner).toHaveTextContent("127 строк");
   });
 
   it("из таблицы можно вернуться в диагностику", async () => {
@@ -256,7 +255,7 @@ describe("путь от находки к строкам", () => {
     await user.click(screen.getByRole("button", { name: /Показать строки/ }));
     await screen.findByText(/Показаны строки находки/);
 
-    await user.click(screen.getByRole("button", { name: "Workspace" }));
+    await user.click(screen.getByRole("button", { name: "Файлы" }));
     await user.click(await screen.findByText("продажи.csv"));
 
     expect(screen.queryByText(/Показаны строки находки/)).not.toBeInTheDocument();

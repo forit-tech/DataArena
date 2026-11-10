@@ -1,0 +1,343 @@
+{
+  "criteria": [
+    {
+      "key": "roc_auc",
+      "label": "ROC-AUC",
+      "direction": "max",
+      "unit": "",
+      "group": "quality"
+    },
+    {
+      "key": "f1",
+      "label": "F1",
+      "direction": "max",
+      "unit": "",
+      "group": "quality"
+    },
+    {
+      "key": "accuracy",
+      "label": "Accuracy",
+      "direction": "max",
+      "unit": "",
+      "group": "quality"
+    },
+    {
+      "key": "fit_seconds",
+      "label": "Время обучения на фолде",
+      "direction": "min",
+      "unit": "с",
+      "group": "time"
+    },
+    {
+      "key": "inference_ms",
+      "label": "Инференс на 1000 строк",
+      "direction": "min",
+      "unit": "мс",
+      "group": "time"
+    },
+    {
+      "key": "model_mb",
+      "label": "Размер модели (pickle)",
+      "direction": "min",
+      "unit": "МБ",
+      "group": "size"
+    }
+  ],
+  "alternatives": [
+    {
+      "key": "logreg",
+      "label": "Логистическая регрессия",
+      "values": {
+        "roc_auc": {
+          "value": 0.926865,
+          "std": 0.022647
+        },
+        "f1": {
+          "value": 0.844171,
+          "std": 0.040471
+        },
+        "accuracy": {
+          "value": 0.857971,
+          "std": 0.038888
+        },
+        "fit_seconds": {
+          "value": 0.005765,
+          "std": 0.000526
+        },
+        "inference_ms": {
+          "value": 2.177826,
+          "std": 0.094859
+        },
+        "model_mb": {
+          "value": 0.003094,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "Pipeline"
+      }
+    },
+    {
+      "key": "tree",
+      "label": "Дерево решений",
+      "values": {
+        "roc_auc": {
+          "value": 0.81536,
+          "std": 0.036354
+        },
+        "f1": {
+          "value": 0.796501,
+          "std": 0.039813
+        },
+        "accuracy": {
+          "value": 0.815942,
+          "std": 0.035352
+        },
+        "fit_seconds": {
+          "value": 0.003737,
+          "std": 0.000593
+        },
+        "inference_ms": {
+          "value": 1.295942,
+          "std": 0.079226
+        },
+        "model_mb": {
+          "value": 0.016628,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "DecisionTreeClassifier"
+      }
+    },
+    {
+      "key": "rf",
+      "label": "Случайный лес (300)",
+      "values": {
+        "roc_auc": {
+          "value": 0.930829,
+          "std": 0.023362
+        },
+        "f1": {
+          "value": 0.85413,
+          "std": 0.04828
+        },
+        "accuracy": {
+          "value": 0.868116,
+          "std": 0.044197
+        },
+        "fit_seconds": {
+          "value": 0.284479,
+          "std": 0.008284
+        },
+        "inference_ms": {
+          "value": 63.601884,
+          "std": 4.396694
+        },
+        "model_mb": {
+          "value": 5.269645,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "RandomForestClassifier"
+      }
+    },
+    {
+      "key": "gbm",
+      "label": "Градиентный бустинг",
+      "values": {
+        "roc_auc": {
+          "value": 0.928397,
+          "std": 0.032875
+        },
+        "f1": {
+          "value": 0.857553,
+          "std": 0.034264
+        },
+        "accuracy": {
+          "value": 0.871014,
+          "std": 0.035277
+        },
+        "fit_seconds": {
+          "value": 0.118539,
+          "std": 0.001358
+        },
+        "inference_ms": {
+          "value": 3.206377,
+          "std": 0.534659
+        },
+        "model_mb": {
+          "value": 0.137245,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "GradientBoostingClassifier"
+      }
+    },
+    {
+      "key": "knn",
+      "label": "k ближайших соседей",
+      "values": {
+        "roc_auc": {
+          "value": 0.888032,
+          "std": 0.021949
+        },
+        "f1": {
+          "value": 0.816114,
+          "std": 0.018444
+        },
+        "accuracy": {
+          "value": 0.84058,
+          "std": 0.016994
+        },
+        "fit_seconds": {
+          "value": 0.002062,
+          "std": 0.000198
+        },
+        "inference_ms": {
+          "value": 36.340435,
+          "std": 1.755076
+        },
+        "model_mb": {
+          "value": 0.240086,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "Pipeline"
+      }
+    },
+    {
+      "key": "svm",
+      "label": "SVM (RBF)",
+      "values": {
+        "roc_auc": {
+          "value": 0.920904,
+          "std": 0.022159
+        },
+        "f1": {
+          "value": 0.838683,
+          "std": 0.036124
+        },
+        "accuracy": {
+          "value": 0.855072,
+          "std": 0.029435
+        },
+        "fit_seconds": {
+          "value": 0.029784,
+          "std": 0.001516
+        },
+        "inference_ms": {
+          "value": 17.927826,
+          "std": 1.938524
+        },
+        "model_mb": {
+          "value": 0.117226,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "Pipeline"
+      }
+    },
+    {
+      "key": "nb",
+      "label": "Наивный Байес",
+      "values": {
+        "roc_auc": {
+          "value": 0.892004,
+          "std": 0.03163
+        },
+        "f1": {
+          "value": 0.788477,
+          "std": 0.038976
+        },
+        "accuracy": {
+          "value": 0.824638,
+          "std": 0.026327
+        },
+        "fit_seconds": {
+          "value": 0.001961,
+          "std": 0.000456
+        },
+        "inference_ms": {
+          "value": 2.486232,
+          "std": 0.43255
+        },
+        "model_mb": {
+          "value": 0.002634,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "GaussianNB"
+      }
+    },
+    {
+      "key": "mlp",
+      "label": "Нейросеть MLP (64)",
+      "values": {
+        "roc_auc": {
+          "value": 0.900963,
+          "std": 0.025685
+        },
+        "f1": {
+          "value": 0.808962,
+          "std": 0.042426
+        },
+        "accuracy": {
+          "value": 0.830435,
+          "std": 0.040541
+        },
+        "fit_seconds": {
+          "value": 0.519291,
+          "std": 0.034847
+        },
+        "inference_ms": {
+          "value": 2.541014,
+          "std": 0.102072
+        },
+        "model_mb": {
+          "value": 0.114752,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "Pipeline"
+      }
+    }
+  ],
+  "primary": "roc_auc",
+  "context": {
+    "dataset": "australian_credit",
+    "task": "binary",
+    "origin": "OpenML #40981",
+    "rows": 690,
+    "features": 42,
+    "protocol": "5-fold StratifiedKFold, shuffle, seed 42",
+    "openml": {
+      "openml_id": 40981,
+      "openml_name": "Australian",
+      "openml_version": "4",
+      "licence": "Public",
+      "categorical_features": 8,
+      "missing_cells": 0,
+      "positive_class": "1",
+      "positive_share": 0.4449
+    },
+    "environment": {
+      "python": "3.12.10",
+      "sklearn": "1.7.2",
+      "numpy": "2.4.4",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+      "cpu_count": 16,
+      "seed": 42,
+      "folds": 5,
+      "inference_repeats": 5,
+      "measured_at": "2026-11-10T00:13:08+0300"
+    }
+  }
+}

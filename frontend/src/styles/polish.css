@@ -1,0 +1,370 @@
+/*
+  Полировка взаимодействий поверх существующей системы оформления.
+
+  Правила (design engineering, Emil Kowalski): анимируются только transform и opacity;
+  входы — сильным ease-out, никогда ease-in; всё короче 300 мс; нажатие подтверждается
+  лёгким сжатием; часто повторяемые действия (навигация, ввод) не анимируются вовсе;
+  hover включается только на устройствах с настоящим курсором.
+*/
+
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --focus-ring: 0 0 0 2px var(--surface-base), 0 0 0 4px var(--accent-primary);
+}
+
+/* фокус с клавиатуры виден везде одинаково; мышиный клик рамку не рисует */
+:where(button, select, input, summary, [role="tab"], [role="radio"]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* нажатие: кнопка «слышит» пользователя через 100–160 мс */
+.button,
+.decision-chip,
+.criteria__direction,
+.icon-button,
+.verdict__switch button {
+  transition:
+    transform 140ms var(--ease-out),
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.button:active:not(:disabled),
+.decision-chip:active:not(:disabled),
+.criteria__direction:active,
+.icon-button:active,
+.verdict__switch button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .button:hover:not(:disabled) {
+    border-color: var(--border-strong);
+  }
+}
+
+/* активный раздел читается с первого взгляда: полоса акцента слева, без анимации —
+   навигацию нажимают десятки раз в день */
+.app-nav__item {
+  position: relative;
+}
+
+.app-nav__item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent-primary);
+}
+
+.verdict__winner {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* новый победитель появляется коротким подъёмом: анимация сообщает «выбор изменился» */
+.verdict__winner,
+.mode__winner {
+  animation: winner-in 220ms var(--ease-out);
+}
+
+@keyframes winner-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.verdict__switch {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+}
+
+.verdict__switch button {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 3px var(--space-3);
+  cursor: pointer;
+}
+
+.verdict__switch button[aria-checked="true"] {
+  background: var(--accent-primary-muted);
+  color: var(--text-primary);
+}
+
+.verdict__switch button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modes {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.mode--active {
+  border-color: var(--accent-primary);
+  background: var(--surface-raised);
+}
+
+.influence .closeness__bar {
+  background: var(--accent-primary);
+}
+
+/* шкалы режима D */
+.scales {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scales__row {
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.scales__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.scales__fields {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-1);
+  align-items: end;
+}
+
+.scales__bound {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.scales__bound input {
+  width: 100%;
+  min-width: 0;
+}
+
+.scales__note {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+}
+
+.scale-source {
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  background: var(--surface-overlay);
+  color: var(--text-secondary);
+}
+
+.scale-source--natural {
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+
+.scale-source--budget,
+.scale-source--user {
+  background: var(--accent-primary-muted);
+  color: var(--accent-primary-hover);
+}
+
+.scale-source--observed {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .verdict__winner,
+  .mode__winner {
+    animation: none;
+  }
+
+  .button,
+  .decision-chip,
+  .criteria__direction,
+  .icon-button,
+  .verdict__switch button {
+    transition: none;
+  }
+}
+
+/* ---------- минималистичная раскладка Decision Lab ----------
+   Секции разделяются воздухом и тонкой линией, а не рамками: никакой карточки в карточке.
+   Подробности спрятаны во вкладки, на первом экране — только решение. */
+
+.decision-panel {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+  padding: var(--space-4) 0;
+}
+
+.decision__controls {
+  gap: 0;
+}
+
+.decision__controls > .decision-panel:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.decision__grid {
+  gap: var(--space-6);
+}
+
+.decision-source {
+  border-bottom: 0;
+}
+
+.verdict {
+  background: transparent;
+  border: 0;
+  border-left: 3px solid var(--severity-ok);
+  border-radius: 0;
+  padding: var(--space-1) 0 var(--space-1) var(--space-4);
+}
+
+.verdict__badge {
+  background: transparent;
+  padding: 0;
+}
+
+.modes-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.mode-row td {
+  padding: 6px var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  vertical-align: baseline;
+}
+
+.mode-row__letter {
+  width: 20px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.mode-row__title {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.mode-row__winner {
+  color: var(--text-primary);
+  white-space: nowrap;
+  animation: winner-in 220ms var(--ease-out);
+}
+
+.mode-row__note {
+  color: var(--text-muted);
+}
+
+.mode-row__note--warn {
+  color: var(--bad-fg);
+}
+
+.mode-row--selectable {
+  cursor: pointer;
+}
+
+.mode-row--active td {
+  background: var(--surface-raised);
+}
+
+.mode-row--active .mode-row__letter {
+  color: var(--accent-primary);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mode-row--selectable:hover td {
+    background: var(--surface-raised);
+  }
+}
+
+.result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-top: var(--space-3);
+}
+
+.result-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  padding: var(--space-2) 0;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+
+.result-tabs button[aria-selected="true"] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.result-pane {
+  padding-top: var(--space-3);
+  min-height: 240px;
+}
+
+.criteria-more {
+  margin-top: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.criteria-more summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.criteria-more__list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+}
+
+.criteria-more__list label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px 0;
+}
+
+.decision-chip {
+  border-color: var(--border-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-row__winner {
+    animation: none;
+  }
+}

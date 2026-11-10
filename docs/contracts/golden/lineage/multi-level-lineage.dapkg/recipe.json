@@ -1,0 +1,41 @@
+{
+  "derived_from_lineage": false,
+  "format_version": "1.0.0",
+  "inputs": [
+    {
+      "alias": "customers",
+      "format_hint": "csv",
+      "required_columns": [
+        "userid",
+        "monthly_spend",
+        "plan",
+        "signup_date"
+      ],
+      "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "name": "customers_golden",
+  "output": {
+    "compression": "zstd",
+    "format": "parquet"
+  },
+  "steps": [
+    {
+      "on": "customers",
+      "op": "rename_column",
+      "params": {
+        "from": "userid",
+        "to": "customer_id"
+      }
+    },
+    {
+      "op": "deduplicate",
+      "params": {
+        "keep": "first",
+        "subset": [
+          "customer_id"
+        ]
+      }
+    }
+  ]
+}

@@ -80,7 +80,8 @@ describe("оболочка приложения", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("dataarena.package/1.0.0")).toBeInTheDocument();
+    //#состояние сервера — точка в островке навигации, версия контракта — в её подписи
+    expect(await screen.findByRole("status", { name: /dataarena\.package\/1\.0\.0/ })).toBeInTheDocument();
   });
 
   it("показывает понятное сообщение, когда backend не запущен", async () => {
@@ -108,13 +109,12 @@ describe("оболочка приложения", () => {
 
     render(<App />);
 
-    for (const label of ["Workspace", "Dataset", "SQL", "Health"]) {
+    for (const label of ["Файлы", "Данные", "Конвейер", "Качество", "Сборка", "Выбор модели"]) {
       expect(await screen.findByRole("button", { name: label })).toBeEnabled();
     }
 
-    for (const label of ["Builder", "Recipes"]) {
-      expect(screen.getByRole("button", { name: label })).toBeDisabled();
-    }
+    //#рецептов ещё нет, и раздел обязан быть недоступен, а не открывать пустой экран
+    expect(screen.getByRole("button", { name: "Рецепты" })).toBeDisabled();
   });
 
   it("пустое рабочее пространство объясняет, что делать дальше", async () => {

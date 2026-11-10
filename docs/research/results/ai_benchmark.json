@@ -1,0 +1,332 @@
+{
+  "environment": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "python": "3.12.10"
+  },
+  "tasks": {
+    "repair": 6,
+    "assembly": 4
+  },
+  "results": [
+    {
+      "model": "qwen3:8b",
+      "calls": [
+        {
+          "kind": "repair",
+          "code": "all_null_column",
+          "acceptable": [
+            "drop",
+            "none"
+          ],
+          "answer": "drop",
+          "correct": true,
+          "rejected": false,
+          "russian": 1.0,
+          "seconds": 28.66,
+          "tokens_per_second": 11.17,
+          "summary": "Колонка «комментарий» полностью пуста — в ней нет данных. Это мусорный признак, который не несёт информации и может навредить обучению модели."
+        },
+        {
+          "kind": "repair",
+          "code": "case_variant_categories",
+          "acceptable": [
+            "canonical"
+          ],
+          "answer": "canonical",
+          "correct": true,
+          "rejected": false,
+          "russian": 1.0,
+          "seconds": 21.56,
+          "tokens_per_second": 11.5,
+          "summary": "Значения в колонке «город» записаны разными способами (разный регистр, лишние пробелы), что приводит к тому, что одна и та же категория считается разной. Это мешает корректному анализу и обучению моделей, так как данные дробятся и теряется связность."
+        },
+        {
+          "kind": "repair",
+          "code": "case_variant_categories",
+          "acceptable": [
+            "lower",
+            "none"
+          ],
+          "answer": "lower",
+          "correct": true,
+          "rejected": false,
+          "russian": 1.0,
+          "seconds": 17.97,
+          "tokens_per_second": 11.25,
+          "summary": "Значения в колонке «менеджер» отличаются только регистром или пробелами. Это приводит к тому, что одна и та же категория считается разной, что мешает корректному анализу и обучению модели."
+        },
+        {
+          "kind": "repair",
+          "code": "missing_values",
+          "acceptable": [
+            "drop_rows",
+            "median",
+            "none"
+          ],
+          "answer": "median",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.993421052631579,
+          "seconds": 22.16,
+          "tokens_per_second": 11.21,
+          "summary": "В колонке «сумма» есть пропуски (в 25% строк). Это важно, потому что многие модели не работают с пропусками, а простые подсчёты их игнорируют, что может исказить результаты."
+        },
+        {
+          "kind": "repair",
+          "code": "whitespace_anomaly",
+          "acceptable": [
+            "trim"
+          ],
+          "answer": "trim",
+          "correct": true,
+          "rejected": false,
+          "russian": 1.0,
+          "seconds": 17.63,
+          "tokens_per_second": 11.28,
+          "summary": "В значениях колонки «город» есть пробелы по краям (например, «Москва »). Это приводит к тому, что «Москва» и «Москва » считаются разными значениями, что мешает корректной группировке и анализу данных."
+        },
+        {
+          "kind": "repair",
+          "code": "whitespace_anomaly",
+          "acceptable": [
+            "trim"
+          ],
+          "answer": "trim",
+          "correct": true,
+          "rejected": false,
+          "russian": 1.0,
+          "seconds": 18.8,
+          "tokens_per_second": 10.86,
+          "summary": "В значениях колонки «менеджер» есть пробелы по краям, что приводит к тому, что «Москва» и «Москва » считаются разными значениями. Это мешает корректной группировке, фильтрации и обучению моделей."
+        },
+        {
+          "kind": "assembly",
+          "pair": "clients.parquet–orders.parquet",
+          "acceptable": [
+            "join"
+          ],
+          "answer": "join",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.8285714285714286,
+          "seconds": 21.41,
+          "tokens_per_second": 10.4,
+          "summary": "Таблицы описывают клиентов и их заказы. Соединять построчно стоит по безопасному ключу `client_id` (1:N), так как связь полная и однозначная. Соединение по `client_id` и `order_id` не рекомендуется из-за низкой доли совпадений. Для обучения модели можно использовать `price` из `orders` или `сегмент` из `clients`."
+        },
+        {
+          "kind": "assembly",
+          "pair": "clients.parquet–weather.parquet",
+          "acceptable": [
+            "keep_separate"
+          ],
+          "answer": "keep_separate",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.7971014492753623,
+          "seconds": 15.9,
+          "tokens_per_second": 10.59,
+          "summary": "Таблица clients.parquet описывает клиентов с их сегментами, таблица weather.parquet — температуру в городах. Связи между таблицами нет. Соединять построчно не стоит."
+        },
+        {
+          "kind": "assembly",
+          "pair": "orders.parquet–weather.parquet",
+          "acceptable": [
+            "keep_separate"
+          ],
+          "answer": "keep_separate",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.8608247422680413,
+          "seconds": 16.37,
+          "tokens_per_second": 10.65,
+          "summary": "Таблица orders.parquet описывает заказы с уникальными идентификаторами заказов, клиентами и ценами. Таблица weather.parquet содержит данные о температуре в городах. Нет общих колонок для соединения. Соединять построчно не стоит."
+        },
+        {
+          "kind": "assembly",
+          "pair": "models.parquet–sales.parquet",
+          "acceptable": [
+            "aggregate",
+            "keep_separate"
+          ],
+          "answer": "aggregate",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.45977011494252873,
+          "seconds": 14.75,
+          "tokens_per_second": 10.82,
+          "summary": "Таблица models.parquet описывает автомобили (model, trim, hp), таблица sales.parquet — продажи (model, amount)."
+        }
+      ],
+      "errors": 0,
+      "accuracy": 1.0,
+      "repair_accuracy": 1.0,
+      "assembly_accuracy": 1.0,
+      "rejected_share": 0.0,
+      "russian_share": 0.894,
+      "median_seconds": 18.38,
+      "median_tokens_per_second": 11.02,
+      "size_gb": 5.23
+    },
+    {
+      "model": "hf.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive:Q4_K_M",
+      "calls": [
+        {
+          "kind": "repair",
+          "code": "all_null_column",
+          "acceptable": [
+            "drop",
+            "none"
+          ],
+          "answer": "drop",
+          "correct": true,
+          "rejected": false,
+          "russian": 1.0,
+          "seconds": 43.57,
+          "tokens_per_second": 8.71,
+          "summary": "Проблема: колонка «комментарий» полностью пустая (12 строк). Решение: удалить её, так как она не несёт сведений для модели. Риск: нарушение внешнего контракта или схемы данных, если колонка там обязательна."
+        },
+        {
+          "kind": "repair",
+          "code": "case_variant_categories",
+          "acceptable": [
+            "canonical"
+          ],
+          "answer": "canonical",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.9740634005763689,
+          "seconds": 30.76,
+          "tokens_per_second": 8.73,
+          "summary": "Проблема: разброс значений из-за регистра и пробелов. Решение: привести всё к самому частому варианту записи (canonical). Это безопасно и восстанавливает целостность категорий."
+        },
+        {
+          "kind": "repair",
+          "code": "case_variant_categories",
+          "acceptable": [
+            "lower",
+            "none"
+          ],
+          "answer": "lower",
+          "correct": true,
+          "rejected": false,
+          "russian": 1.0,
+          "seconds": 33.24,
+          "tokens_per_second": 8.62,
+          "summary": "Проблема в неконсистентности записи фамилий менеджеров из-за регистра и пробелов. Решение — привести всё к нижнему регистру, но это изменит вид корректных записей."
+        },
+        {
+          "kind": "repair",
+          "code": "missing_values",
+          "acceptable": [
+            "drop_rows",
+            "median",
+            "none"
+          ],
+          "answer": "median",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.9962825278810409,
+          "seconds": 42.22,
+          "tokens_per_second": 8.88,
+          "summary": "Пропуски в колонке «сумма» мешают обучению моделей. Лучший вариант — заполнить их медианой (700.0), но делать это внутри ML-конвейера на обучающей выборке, чтобы избежать утечки данных из тестовой части."
+        },
+        {
+          "kind": "repair",
+          "code": "whitespace_anomaly",
+          "acceptable": [
+            "trim"
+          ],
+          "answer": "trim",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.9808917197452229,
+          "seconds": 27.1,
+          "tokens_per_second": 8.49,
+          "summary": "Проблемные строки содержат лишние пробелы по краям. Это важно, потому что из-за них 'Москва' и 'Москва ' будут считаться разными городами при анализе. Лучшее решение — убрать эти пробелы (вариант trim), так как это безопасно и не меняет суть данных."
+        },
+        {
+          "kind": "repair",
+          "code": "whitespace_anomaly",
+          "acceptable": [
+            "trim"
+          ],
+          "answer": "trim",
+          "correct": true,
+          "rejected": false,
+          "russian": 1.0,
+          "seconds": 30.95,
+          "tokens_per_second": 8.49,
+          "summary": "Проблемные строки: 2 из 12 (доля ~16.7%). Причина: ручной ввод или выгрузка из таблиц. Решение: убрать пробелы по краям (безопасно)."
+        },
+        {
+          "kind": "assembly",
+          "pair": "clients.parquet–orders.parquet",
+          "acceptable": [
+            "join"
+          ],
+          "answer": "join",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.873015873015873,
+          "seconds": 34.64,
+          "tokens_per_second": 8.09,
+          "summary": "Таблицы описывают клиентов и их заказы. Связь по client_id является безопасной (safe) и сохраняет все заказы, что необходимо для анализа поведения каждого клиента. Рекомендуется выполнить join по ключу client_id из обеих таблиц."
+        },
+        {
+          "kind": "assembly",
+          "pair": "clients.parquet–weather.parquet",
+          "acceptable": [
+            "keep_separate"
+          ],
+          "answer": "keep_separate",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.8813559322033898,
+          "seconds": 34.2,
+          "tokens_per_second": 8.24,
+          "summary": "Таблицы описывают клиентов (`clients.parquet`) и погодные условия по городам (`weather.parquet`). Соединить их построчно сложно из-за отсутствия общего ключа. Для анализа нужно сначала агрегировать погоду до уровня клиента (через внешнюю связь город->клиент) или создать мостовую таблицу."
+        },
+        {
+          "kind": "assembly",
+          "pair": "orders.parquet–weather.parquet",
+          "acceptable": [
+            "keep_separate"
+          ],
+          "answer": "keep_separate",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.8027210884353742,
+          "seconds": 34.85,
+          "tokens_per_second": 8.34,
+          "summary": "orders.parquet описывает транзакции клиентов с ценами и статусами (300 уникальных клиентов). weather.parquet содержит метаданные по городам (50 уникальных кодов) и температуры. Прямой join невозможен, так как нет общих колонок-ключей (order_id/client_id не совпадают с city_code/temp). Связь может быть косвенной через географию или время, но это требует проверки."
+        },
+        {
+          "kind": "assembly",
+          "pair": "models.parquet–sales.parquet",
+          "acceptable": [
+            "aggregate",
+            "keep_separate"
+          ],
+          "answer": "aggregate",
+          "correct": true,
+          "rejected": false,
+          "russian": 0.8855421686746988,
+          "seconds": 39.53,
+          "tokens_per_second": 8.22,
+          "summary": "Таблица `models.parquet` (30 строк) связана с `sales.parquet` (120 строк) по ключу `model`. Это связь один-ко-многим (N:M), так как одна модель имеет множество продаж. Прямое соединение создаст 1200 строк, где каждая продажа будет дублировать характеристики модели (`trim`, `hp`). Рекомендуется сначала агрегировать правую таблицу или свести левую к уровню правой, чтобы избежать избыточности и подготовить данные для обучения."
+        }
+      ],
+      "errors": 0,
+      "accuracy": 1.0,
+      "repair_accuracy": 1.0,
+      "assembly_accuracy": 1.0,
+      "rejected_share": 0.0,
+      "russian_share": 0.9394,
+      "median_seconds": 34.42,
+      "median_tokens_per_second": 8.49,
+      "size_gb": 6.55
+    }
+  ],
+  "elapsed_seconds": 546.5
+}

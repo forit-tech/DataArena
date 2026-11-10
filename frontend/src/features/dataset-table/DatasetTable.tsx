@@ -1,25 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Loader2, Search, Stethoscope, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BarChart3, ChevronLeft, ChevronRight, Loader2, Search, Stethoscope, X } from "lucide-react";
+import type { RowSource } from "../../api/endpoints";
 import type { ColumnSchema, Dataset, SemanticType, SortDirection } from "../../types/dataset";
 import { formatCell, formatCount, plural } from "../../utils/format";
+import { ColumnStats } from "./ColumnStats";
 import { VirtualRows } from "./VirtualRows";
 import { EMPTY_QUERY, PAGE_SIZE, useTablePage } from "./useTablePage";
 import type { TableQuery } from "./useTablePage";
 
-const ROW_HEIGHT = 28;
+const ROW_HEIGHT = 30;
 const VIEWPORT_HEIGHT = 560;
 const DEFAULT_COLUMN_WIDTH = 160;
 //#колонка номера строки: узкая и не изменяемая по ширине
 const ORDINAL_WIDTH = 72;
 
+//#короткие общепринятые обозначения типов; у чисел различаются целые и дробные,
+//#потому что от этого зависит, какие шаги конвейера к колонке применимы
 const TYPE_LABEL: Record<SemanticType, string> = {
   id: "ID",
-  numeric: "ЧИС",
-  categorical: "КАТ",
-  datetime: "ДАТА",
-  boolean: "ЛОГ",
-  text: "ТЕКСТ",
+  numeric: "NUM",
+  categorical: "CAT",
+  datetime: "DATE",
+  boolean: "BOOL",
+  text: "STR",
 };
+
+function typeLabel(column: ColumnSchema): string {
+  if (column.semantic_type === "numeric") {
+    const physical = column.physical_type.toLowerCase();
+    if (physical.startsWith("int") || physical.startsWith("uint")) return "INT";
+    if (physical.startsWith("float") || physical.startsWith("decimal")) return "FLOAT";
+  }
+  return TYPE_LABEL[column.semantic_type];
+}
 
 export type DatasetTableProps = {
   dataset: Dataset;
@@ -28,22 +41,54 @@ export type DatasetTableProps = {
   finding?: { finding_id: string; title: string; affected_rows: number | null } | null;
   onBackToHealth?: () => void;
   onClearFinding?: () => void;
+  //#какие строки показывать: исходные или результат конвейера. Экран один и тот же —
+  //#сортировка, фильтры и поиск не должны существовать в двух реализациях
+  source?: RowSource;
+  //#типы колонок результата конвейера: шаг мог сменить тип, и значок исходника был бы неправдой
+  resultTypes?: Record<string, string> | undefined;
 };
+
+//#значок по физическому типу — для колонок, которых нет в схеме исходника или чей тип сменён
+function semanticOf(physical: string): SemanticType {
+  if (/^(U?Int|Float|Decimal)/.test(physical)) {
+    return "numeric";
+  }
+
+  if (/^(Date|Datetime|Time|Duration)/.test(physical)) {
+    return "datetime";
+  }
+
+  if (physical === "Boolean") {
+    return "boolean";
+  }
+
+  if (/^(Categorical|Enum)/.test(physical)) {
+    return "categorical";
+  }
+
+  return "text";
+}
 
 export function DatasetTable({
   dataset,
   finding = null,
   onBackToHealth,
   onClearFinding,
+  source = "dataset",
+  resultTypes,
 }: DatasetTableProps) {
   const [query, setQuery] = useState<TableQuery>({ ...EMPTY_QUERY, finding: finding?.finding_id ?? null });
   const [searchDraft, setSearchDraft] = useState("");
   const [widths, setWidths] = useState<Record<string, number>>({});
+  //#колонка, по которой открыта панель показателей. Живёт здесь, а не в шапке:
+  //#панель одна на таблицу, и вторая колонка её переключает, а не открывает вторую
+  const [statsColumn, setStatsColumn] = useState<string | null>(null);
 
   const { page, isLoading, error, reload } = useTablePage(
     dataset.workspace_id,
     dataset.dataset_id,
     query,
+    source,
   );
 
   //#смена находки сбрасывает страницу и прежние фильтры: иначе пользователь увидел бы
@@ -53,7 +98,34 @@ export function DatasetTable({
     setSearchDraft("");
   }, [finding?.finding_id]);
 
-  const columns = dataset.schema.columns;
+  //#колонки — те, что прислал сервер вместе со строками. Прежде шапка всегда строилась
+  //#по схеме исходника: в результате конвейера удалённая колонка показывалась сплошными
+  //#пропусками, а созданная или переименованная не показывалась вовсе
+  const columns = useMemo<ColumnSchema[]>(() => {
+    if (!page?.columns) {
+      return source === "dataset" ? dataset.schema.columns : [];
+    }
+
+    const known = new Map(dataset.schema.columns.map((column) => [column.name, column]));
+
+    return page.columns.map((name, position) => {
+      const original = known.get(name);
+      const physical = resultTypes?.[name];
+
+      if (original && (source === "dataset" || physical === undefined || physical === original.physical_type)) {
+        return original;
+      }
+
+      return {
+        name,
+        position,
+        physical_type: physical ?? "",
+        logical_type: physical ?? "",
+        semantic_type: semanticOf(physical ?? ""),
+        nullable: true,
+      };
+    });
+  }, [page?.columns, dataset.schema.columns, source, resultTypes]);
   const ordinals = page?.row_ordinals ?? [];
 
   const toggleSort = useCallback((column: string) => {
@@ -85,6 +157,36 @@ export function DatasetTable({
   );
 
   const rows = page?.rows ?? [];
+
+  const tableHeader = (
+          <div className="table-header" style={{ width: totalWidth + ORDINAL_WIDTH }}>
+      <div className="table-th table-th--ordinal" style={{ width: ORDINAL_WIDTH }}>
+        <span className="table-th__name" title="Номер строки в файле">
+          №
+        </span>
+      </div>
+      {columns.map((column) => (
+        <ColumnHeader
+          key={column.name}
+          column={column}
+          width={columnWidth(column.name)}
+          sort={query.sort.find((item) => item.column === column.name)?.direction}
+          onSort={() => toggleSort(column.name)}
+          onResize={(width) =>
+            setWidths((previous) => ({ ...previous, [column.name]: width }))
+          }
+          statsOpen={statsColumn === column.name}
+          //#показатели считаются по исходнику: для колонки результата они были бы
+          //#показателями другой колонки или ответом «не найдено»
+          onStats={
+            source === "dataset"
+              ? () => setStatsColumn((previous) => (previous === column.name ? null : column.name))
+              : undefined
+          }
+        />
+      ))}
+    </div>
+  );
 
   return (
     <div className="table-shell">
@@ -140,13 +242,6 @@ export function DatasetTable({
           )}
         </div>
 
-        <TableStatus
-          isLoading={isLoading}
-          rowsOnPage={rows.length}
-          offset={page?.offset ?? 0}
-          totalRows={page?.total_rows ?? null}
-          totalIsExact={page?.total_is_exact ?? true}
-        />
       </div>
 
       {error ? (
@@ -161,30 +256,15 @@ export function DatasetTable({
         </div>
       ) : (
         <div className="table-frame">
-          <div className="table-header" style={{ width: totalWidth + ORDINAL_WIDTH }}>
-            <div className="table-th table-th--ordinal" style={{ width: ORDINAL_WIDTH }}>
-              <span className="table-th__name" title="Номер строки в файле">
-                №
-              </span>
-            </div>
-            {columns.map((column) => (
-              <ColumnHeader
-                key={column.name}
-                column={column}
-                width={columnWidth(column.name)}
-                sort={query.sort.find((item) => item.column === column.name)?.direction}
-                onSort={() => toggleSort(column.name)}
-                onResize={(width) =>
-                  setWidths((previous) => ({ ...previous, [column.name]: width }))
-                }
-              />
-            ))}
-          </div>
-
           {rows.length === 0 && !isLoading ? (
-            <EmptyRows hasQuery={Boolean(query.search) || query.filters.length > 0} />
+            <div className="table-empty-wrap">
+              {tableHeader}
+              <EmptyRows hasQuery={Boolean(query.search) || query.filters.length > 0} />
+            </div>
           ) : (
             <VirtualRows
+              header={tableHeader}
+              contentWidth={totalWidth + ORDINAL_WIDTH}
               rowCount={rows.length}
               rowHeight={ROW_HEIGHT}
               height={VIEWPORT_HEIGHT}
@@ -210,30 +290,30 @@ export function DatasetTable({
         </div>
       )}
 
-      <Pagination
-        offset={page?.offset ?? 0}
-        limit={PAGE_SIZE}
-        totalRows={page?.total_rows ?? null}
-        isLoading={isLoading}
-        onChange={(offset) => setQuery((previous) => ({ ...previous, offset }))}
-      />
+      {statsColumn !== null && (
+        <ColumnStats
+          workspaceId={dataset.workspace_id}
+          datasetId={dataset.dataset_id}
+          column={statsColumn}
+          onClose={() => setStatsColumn(null)}
+        />
+      )}
+
+      <div className="table-footer">
+        <Pagination
+          offset={page?.offset ?? 0}
+          limit={PAGE_SIZE}
+          totalRows={page?.total_rows ?? null}
+          isLoading={isLoading}
+          onChange={(offset) => setQuery((previous) => ({ ...previous, offset }))}
+        />
+        <TableStatus isLoading={isLoading} totalRows={page?.total_rows ?? null} />
+      </div>
     </div>
   );
 }
 
-function TableStatus({
-  isLoading,
-  rowsOnPage,
-  offset,
-  totalRows,
-  totalIsExact,
-}: {
-  isLoading: boolean;
-  rowsOnPage: number;
-  offset: number;
-  totalRows: number | null;
-  totalIsExact: boolean;
-}) {
+function TableStatus({ isLoading, totalRows }: { isLoading: boolean; totalRows: number | null }) {
   if (isLoading) {
     //#честное состояние ожидания: сортировка миллиона строк занимает время,
     //#и притворяться, что данные уже здесь, нельзя
@@ -249,14 +329,9 @@ function TableStatus({
     return <span className="table-status">строк: неизвестно</span>;
   }
 
-  const from = rowsOnPage === 0 ? 0 : offset + 1;
-  const to = offset + rowsOnPage;
-  //#total_is_exact=false означает «строк больше»: показывать это как точное число было бы враньём
-  const total = totalIsExact ? formatCount(totalRows) : `более ${formatCount(totalRows)}`;
-
   return (
     <span className="table-status tabular">
-      {formatCount(from)}–{formatCount(to)} из {total}
+      {formatCount(totalRows)} {plural(totalRows, "строка", "строки", "строк")}
     </span>
   );
 }
@@ -267,23 +342,45 @@ function ColumnHeader({
   sort,
   onSort,
   onResize,
+  statsOpen,
+  onStats,
 }: {
   column: ColumnSchema;
   width: number;
   sort: SortDirection | undefined;
   onSort: () => void;
   onResize: (width: number) => void;
+  statsOpen: boolean;
+  onStats?: (() => void) | undefined;
 }) {
   return (
     <div className="table-th" style={{ width }}>
-      <button type="button" className="table-th__button" onClick={onSort} title="Сортировать">
+      <button
+        type="button"
+        className="table-th__button"
+        onClick={onSort}
+        title="Сортировать"
+        aria-label={`Сортировать по колонке ${column.name}`}
+      >
         <span className={`type-badge type-badge--${column.semantic_type}`}>
-          {TYPE_LABEL[column.semantic_type]}
+          {typeLabel(column)}
         </span>
         <span className="table-th__name">{column.name}</span>
         {sort === "asc" && <ArrowUp size={12} aria-hidden />}
         {sort === "desc" && <ArrowDown size={12} aria-hidden />}
       </button>
+      {onStats && (
+        <button
+          type="button"
+          className={`table-th__stats${statsOpen ? " table-th__stats--open" : ""}`}
+          onClick={onStats}
+          title="Показатели колонки"
+          aria-label={`Показатели колонки ${column.name}`}
+          aria-pressed={statsOpen}
+        >
+          <BarChart3 size={12} aria-hidden />
+        </button>
+      )}
       <div
         className="table-th__resize"
         role="separator"
@@ -348,6 +445,21 @@ function EmptyRows({ hasQuery }: { hasQuery: boolean }) {
   );
 }
 
+//#номера страниц как на обычных сайтах: первая, последняя, соседние с текущей,
+//#пропуски — многоточием. На миллионе строк это пять тысяч страниц, и все сразу не нужны
+function pageItems(current: number, pages: number): Array<number | "gap"> {
+  const wanted = new Set([1, pages, current - 1, current, current + 1]);
+  if (current <= 3) [2, 3, 4].forEach((page) => wanted.add(page));
+  if (current >= pages - 2) [pages - 1, pages - 2, pages - 3].forEach((page) => wanted.add(page));
+  const sorted = [...wanted].filter((page) => page >= 1 && page <= pages).sort((a, b) => a - b);
+  const items: Array<number | "gap"> = [];
+  sorted.forEach((page, index) => {
+    if (index > 0 && page - sorted[index - 1]! > 1) items.push("gap");
+    items.push(page);
+  });
+  return items;
+}
+
 function Pagination({
   offset,
   limit,
@@ -361,27 +473,55 @@ function Pagination({
   isLoading: boolean;
   onChange: (offset: number) => void;
 }) {
+  const pages = totalRows === null ? null : Math.max(1, Math.ceil(totalRows / limit));
+  const current = Math.floor(offset / limit) + 1;
   const hasPrevious = offset > 0;
   const hasNext = totalRows !== null && offset + limit < totalRows;
 
+  //#одна страница — листать нечего, и навигация не показывается вовсе
+  if (pages === 1 && !hasPrevious) {
+    return null;
+  }
+
   return (
-    <div className="table-pagination">
+    <nav className="pager" aria-label="Страницы">
       <button
         type="button"
-        className="app-nav__item"
+        className="pager__item"
+        aria-label="Предыдущая страница"
         disabled={!hasPrevious || isLoading}
         onClick={() => onChange(Math.max(0, offset - limit))}
       >
-        Назад
+        <ChevronLeft size={16} aria-hidden />
       </button>
+      {pages !== null &&
+        pageItems(current, pages).map((item, index) =>
+          item === "gap" ? (
+            <span key={`gap-${index}`} className="pager__gap">
+              …
+            </span>
+          ) : (
+            <button
+              key={item}
+              type="button"
+              className="pager__item tabular"
+              aria-current={item === current ? "page" : undefined}
+              disabled={isLoading}
+              onClick={() => onChange((item - 1) * limit)}
+            >
+              {formatCount(item)}
+            </button>
+          ),
+        )}
       <button
         type="button"
-        className="app-nav__item"
+        className="pager__item"
+        aria-label="Следующая страница"
         disabled={!hasNext || isLoading}
         onClick={() => onChange(offset + limit)}
       >
-        Вперёд
+        <ChevronRight size={16} aria-hidden />
       </button>
-    </div>
+    </nav>
   );
 }

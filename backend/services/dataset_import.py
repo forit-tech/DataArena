@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,9 +27,13 @@ from pathlib import Path
 import polars as pl
 
 from backend.adapters.formats.capabilities import FormatCapabilities
-from backend.adapters.formats.registry import detect_upload_format, scan_dataset
+from backend.adapters.formats.registry import (
+    detect_upload_format,
+    ensure_shallow_json,
+    scan_dataset,
+)
 from backend.adapters.storage.workspace_store import DuplicateDatasetError, WorkspaceStore
-from backend.core.errors import AppError
+from backend.core.errors import AppError, DatasetReadError
 from backend.core.logging import get_logger
 from backend.domain.dataset.identifiers import ensure_workspace_id, new_dataset_id
 from backend.domain.dataset.models import (
@@ -41,6 +46,7 @@ from backend.domain.dataset.models import (
     LogicalType,
     SemanticType,
 )
+from backend.domain.lineage.models import Provenance, UploadSource
 from backend.services import normalization
 
 #порог, начиная с которого почти уникальная колонка считается идентификатором
@@ -72,6 +78,7 @@ _INTEGER_DTYPES = (
 @dataclass(frozen=True, slots=True)
 class ImportPaths:
     #раскладка workspace на диске; все пути собираются из проверенных идентификаторов
+    workspace_id: str
     source: Path
     derived: Path
 
@@ -89,6 +96,7 @@ def workspace_paths(
     extension = capabilities.extensions[0]
 
     return ImportPaths(
+        workspace_id=workspace_id,
         source=base / "sources" / f"{dataset_id}{extension}",
         derived=base / "derived" / f"{dataset_id}.parquet",
     )
@@ -237,19 +245,46 @@ def _fallback_semantic(logical: LogicalType) -> SemanticType:
     return SemanticType.TEXT
 
 
-def import_dataset(
+def uploaded(source: DatasetSource) -> Provenance:
+    """Происхождение загруженного файла: имя, формат и отпечаток байтов в момент загрузки."""
+    return Provenance.upload(
+        UploadSource(
+            file_name=source.file_name,
+            format=source.format,
+            sha256=source.sha256,
+            bytes=source.bytes,
+        )
+    )
+
+
+def import_dataset(  # noqa: PLR0913 - происхождение обязано приходить явно
     store: WorkspaceStore,
     workspace_root: Path,
     workspace_id: str,
     stored_file: Path,
     original_name: str,
+    *,
+    provenance: Callable[[DatasetSource], Provenance],
+    content_addressed: bool,
 ) -> Dataset:
     #эта функция регистрирует уже сохранённый файл как датасет workspace
     #сам файл записан вызывающим потоково с проверкой лимита и больше не изменяется
+    #
+    #происхождение обязательно и без значения по умолчанию: вызывающий знает, загрузка это
+    #или сборка, а функция импорта — нет. Оно приходит функцией от источника, потому что
+    #отпечаток и формат файла становятся известны только здесь. Если датасет с тем же
+    #содержимым уже есть, возвращается он, и его происхождение не переписывается
+    #
+    #`content_addressed` решает, что считать одним датасетом. Загрузка — адрес содержимого:
+    #тот же файл дважды — одна карточка. Сборка — событие: у неё свои родители и своя
+    #история, и совпадение байтов с другим датасетом не делает их одной сущностью. Прежде
+    #сборка возвращала совпавший датасет — с чужим именем и чужим видом соединения
     logger = get_logger()
     source_sha256 = sha256_file(stored_file)
 
-    existing = store.find_dataset_by_content(workspace_id, source_sha256)
+    existing = (
+        store.find_dataset_by_content(workspace_id, source_sha256) if content_addressed else None
+    )
 
     if existing is not None:
         logger.info(
@@ -261,13 +296,33 @@ def import_dataset(
     #у принятого файла нет собственного расширения: подсказкой служит имя от клиента,
     #проверенное по белому списку, а сигнатура при её наличии важнее подсказки
     capabilities = detect_upload_format(stored_file, original_name)
+
+    if capabilities.key in {"json", "jsonl"}:
+        #глубоко вложенный JSON роняет процесс в нативном читателе: проверка — один раз,
+        #до того как файл увидит движок
+        ensure_shallow_json(stored_file)
     dataset_id = new_dataset_id()
     paths = workspace_paths(workspace_root, workspace_id, dataset_id, capabilities)
     paths.source.parent.mkdir(parents=True, exist_ok=True)
     stored_file.replace(paths.source)
 
-    derived, status, reason = _prepare_working_artifact(store, paths, source_sha256, capabilities)
-    schema, row_count = _describe(paths, derived, capabilities, status)
+    try:
+        derived, status, reason = _prepare_working_artifact(
+            store, paths, source_sha256, capabilities
+        )
+        schema, row_count = _describe(paths, derived, capabilities, status)
+    except AppError:
+        _discard_orphan_files(paths)
+        raise
+    except Exception as error:
+        #файл не читается движком: повреждён, обрезан или только притворяется своим
+        #форматом. Прежде это была общая ошибка операции, а сам файл оставался в `sources/`,
+        #где его никто не видит и не может удалить
+        _discard_orphan_files(paths)
+        raise DatasetReadError(
+            f"Файл «{original_name}» повреждён или не читается как {capabilities.label}.",
+            details={"format": capabilities.key},
+        ) from error
 
     dataset = Dataset(
         dataset_id=dataset_id,
@@ -291,7 +346,9 @@ def import_dataset(
     )
 
     try:
-        return store.add_dataset(dataset)
+        return store.add_dataset(
+            dataset, provenance(dataset.source), content_addressed=content_addressed
+        )
     except DuplicateDatasetError:
         #гонка: два запроса с одним содержимым прошли проверку выше одновременно, и уникальный
         #индекс отклонил второй. Это не ошибка пользователя — он загрузил тот же файл и должен
@@ -335,7 +392,10 @@ def _prepare_working_artifact(
         return None, DatasetStatus.READY, None
 
     reusable = store.find_reusable_derived(
-        source_sha256, normalization.CONVERTER_NAME, normalization.CONVERTER_VERSION
+        paths.workspace_id,
+        source_sha256,
+        normalization.CONVERTER_NAME,
+        normalization.CONVERTER_VERSION,
     )
 
     if reusable is not None and Path(reusable.path).exists():

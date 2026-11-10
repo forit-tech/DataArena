@@ -12,7 +12,7 @@ router = APIRouter(prefix="/system", tags=["system"])
 APP_VERSION = "0.1.0"
 #версия контракта Dataset Package, которую производит этот сервис; см. docs/contracts/
 PACKAGE_FORMAT = "dataarena.package"
-PACKAGE_VERSION = "1.0.0"
+PACKAGE_VERSION = "1.1.0"
 FINGERPRINT_ALGORITHM = "dataarena-logical-sha256-v1"
 
 

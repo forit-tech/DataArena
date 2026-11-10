@@ -26,6 +26,7 @@ from backend.domain.dataset.identifiers import (
     new_saved_query_id,
     new_workspace_id,
 )
+from backend.domain.lineage.models import Provenance, UploadSource
 from backend.domain.sql.models import QueryRun, QueryStatus, SavedQuery
 from tests.unit.test_workspace_store import make_dataset
 
@@ -52,6 +53,9 @@ CREATE TABLE datasets (
     created_at        TEXT NOT NULL
 );
 """
+
+#происхождение загрузки для датасетов, которые тест кладёт в хранилище напрямую
+TEST_UPLOAD = Provenance.upload(UploadSource("t.csv", "csv", "0" * 64, 0))
 
 
 @pytest.fixture
@@ -327,8 +331,8 @@ def test_deleting_a_workspace_removes_its_saved_queries(
 def test_datasets_with_the_same_name_get_distinct_aliases(
     store: WorkspaceStore, workspace_id: str
 ) -> None:
-    first = store.add_dataset(make_dataset(workspace_id, name="отчёт.csv", sha256="a" * 64))
-    second = store.add_dataset(make_dataset(workspace_id, name="отчёт.csv", sha256="b" * 64))
+    first = store.add_dataset(make_dataset(workspace_id, name="отчёт.csv", sha256="a" * 64), TEST_UPLOAD, content_addressed=True)
+    second = store.add_dataset(make_dataset(workspace_id, name="отчёт.csv", sha256="b" * 64), TEST_UPLOAD, content_addressed=True)
 
     assert first.alias == "отчёт"
     assert second.alias == "отчёт_2"
@@ -338,6 +342,6 @@ def test_alias_is_assigned_by_the_store_not_by_the_caller(
     store: WorkspaceStore, workspace_id: str
 ) -> None:
     #вызывающий не знает, какие имена заняты, и не защищён от гонки: подбор принадлежит хранилищу
-    dataset = store.add_dataset(make_dataset(workspace_id, name="продажи.csv", sha256="c" * 64))
+    dataset = store.add_dataset(make_dataset(workspace_id, name="продажи.csv", sha256="c" * 64), TEST_UPLOAD, content_addressed=True)
 
     assert dataset.alias == "продажи"

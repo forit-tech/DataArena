@@ -28,7 +28,7 @@ export class NetworkError extends Error {
   }
 }
 
-const API_PREFIX = "/api";
+export const API_PREFIX = "/api";
 
 async function parseError(response: Response): Promise<ApiError> {
   //#эта функция аккуратно читает ошибку backend даже тогда, когда сервер вернул не JSON, а обычный текст
@@ -44,7 +44,7 @@ async function parseError(response: Response): Promise<ApiError> {
   }
 
   try {
-    const payload = JSON.parse(text) as { error?: ApiErrorPayload; detail?: string };
+    const payload = JSON.parse(text) as { error?: ApiErrorPayload; detail?: unknown };
 
     if (payload.error) {
       return new ApiError(response.status, payload.error);
@@ -52,11 +52,41 @@ async function parseError(response: Response): Promise<ApiError> {
 
     return new ApiError(response.status, {
       code: "http_error",
-      message: payload.detail ?? text,
+      message: typeof payload.detail === "string" ? payload.detail : plainMessage(response.status, text),
       details: {},
     });
   } catch {
-    return new ApiError(response.status, { code: "http_error", message: text, details: {} });
+    return new ApiError(response.status, {
+      code: "http_error",
+      message: plainMessage(response.status, text),
+      details: {},
+    });
+  }
+}
+
+//#короткий текст ответа можно показать как есть; HTML-страницу прокси или длинную
+//#простыню — нельзя: прежде в красный баннер попадала вся разметка страницы ошибки
+function plainMessage(status: number, text: string): string {
+  const trimmed = text.trim();
+
+  if (trimmed.startsWith("<") || trimmed.length > 300) {
+    return `Сервер ответил ошибкой ${status}, но не в формате DataArena. Проверьте, что backend запущен и адрес верный.`;
+  }
+
+  return trimmed;
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  //#успешный ответ, который не JSON (например, страница index.html вместо API из-за
+  //#неверного прокси), прежде показывался как «Unexpected token '<'»
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError(response.status, {
+      code: "unexpected_response",
+      message: "Сервер ответил не данными DataArena. Проверьте, что backend запущен и адрес верный.",
+      details: {},
+    });
   }
 }
 
@@ -113,12 +143,25 @@ export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
   //#signal нужен для защиты от устаревших ответов: при быстрой смене сортировки или страницы
   //#предыдущий запрос отменяется, и его результат не может перезаписать более новый
   const response = await request(path, signal ? { signal } : undefined);
-  return (await response.json()) as T;
+  return readJson<T>(response);
 }
 
-export async function getBlob(path: string): Promise<Blob> {
-  const response = await request(path);
-  return await response.blob();
+export async function getBlob(path: string): Promise<{ blob: Blob; fileName: string | null }> {
+  //#выгрузка приходит файлом; ошибка сервера — JSON с объяснением, а не «файл»
+  const response = await request(path.startsWith(API_PREFIX) ? path.slice(API_PREFIX.length) : path);
+  return { blob: await response.blob(), fileName: fileNameOf(response) };
+}
+
+function fileNameOf(response: Response): string | null {
+  const header = response.headers.get("content-disposition") ?? "";
+  const encoded = /filename\*=utf-8''([^;]+)/i.exec(header);
+
+  if (encoded?.[1]) {
+    return decodeURIComponent(encoded[1]);
+  }
+
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1] ?? null;
 }
 
 export async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -127,12 +170,23 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return (await response.json()) as T;
+  return readJson<T>(response);
+}
+
+export async function putJson<T>(path: string, body: unknown): Promise<T> {
+  //#конвейер заменяется целиком, а не по шагу: PUT здесь честнее, чем POST,
+  //#и повторный вызов с тем же телом даёт то же состояние
+  const response = await request(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<T>(response);
 }
 
 export async function postForm<T>(path: string, formData: FormData): Promise<T> {
   const response = await request(path, { method: "POST", body: formData });
-  return (await response.json()) as T;
+  return readJson<T>(response);
 }
 
 export async function deleteVoid(path: string): Promise<void> {

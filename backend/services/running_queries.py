@@ -16,8 +16,8 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from backend.adapters.engine.duckdb_session import QueryHandle
 from backend.core.errors import AppError, ValidationError
+from backend.services.sql_process import ProcessHandle
 
 #метка — шестнадцатеричное представление uuid4: длина и алфавит проверяются до того,
 #как значение попадёт в ключ реестра или в лог
@@ -50,10 +50,10 @@ class RunningQueries:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._handles: dict[tuple[str, str], QueryHandle] = {}
+        self._handles: dict[tuple[str, str], ProcessHandle] = {}
 
     @contextmanager
-    def slot(self, workspace_id: str, token: str) -> Iterator[QueryHandle]:
+    def slot(self, workspace_id: str, token: str) -> Iterator[ProcessHandle]:
         """Занимает метку на время выполнения и освобождает её при любом исходе.
 
         Ручка создаётся **сразу**, ещё до открытия соединения с движком. Прежняя версия
@@ -64,7 +64,7 @@ class RunningQueries:
         """
         ensure_query_token(token)
         key = (workspace_id, token)
-        handle = QueryHandle()
+        handle = ProcessHandle()
 
         with self._lock:
             if key in self._handles:

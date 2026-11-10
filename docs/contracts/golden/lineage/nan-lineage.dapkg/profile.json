@@ -1,0 +1,287 @@
+{
+  "columns": [
+    {
+      "examples": [
+        1001,
+        1002,
+        1003
+      ],
+      "id_reason": "почти уникальные значения (100.0%) и имя, характерное для идентификатора",
+      "is_constant": false,
+      "is_imbalanced": false,
+      "is_probable_id": true,
+      "missing_count": 0,
+      "missing_ratio": 0.0,
+      "name": "customer_id",
+      "semantic_type": "id",
+      "unique_count": 12,
+      "unique_ratio": 1.0
+    },
+    {
+      "examples": [
+        430.0,
+        128.5,
+        210.25
+      ],
+      "id_reason": null,
+      "is_constant": false,
+      "is_imbalanced": false,
+      "is_probable_id": false,
+      "missing_count": 2,
+      "missing_ratio": 0.166667,
+      "name": "monthly_spend",
+      "numeric_stats": {
+        "max": 9820.5,
+        "mean": 1290.975,
+        "median": 352.0,
+        "min": 128.5,
+        "q1": 226.5,
+        "q3": 492.0625,
+        "skewness": 2.653069,
+        "std": 3001.076815
+      },
+      "semantic_type": "numeric",
+      "unique_count": 11,
+      "unique_ratio": 0.916667
+    },
+    {
+      "examples": [
+        12,
+        3,
+        27
+      ],
+      "id_reason": null,
+      "is_constant": false,
+      "is_imbalanced": false,
+      "is_probable_id": false,
+      "missing_count": 0,
+      "missing_ratio": 0.0,
+      "name": "tenure_months",
+      "numeric_stats": {
+        "max": 61.0,
+        "mean": 18.25,
+        "median": 13.5,
+        "min": 3.0,
+        "q1": 7.75,
+        "q3": 23.25,
+        "skewness": 1.567062,
+        "std": 16.343611
+      },
+      "semantic_type": "numeric",
+      "unique_count": 12,
+      "unique_ratio": 1.0
+    },
+    {
+      "examples": [
+        "basic",
+        "pro",
+        "pro"
+      ],
+      "id_reason": null,
+      "is_constant": false,
+      "is_imbalanced": false,
+      "is_probable_id": false,
+      "missing_count": 0,
+      "missing_ratio": 0.0,
+      "name": "plan",
+      "semantic_type": "categorical",
+      "unique_count": 3,
+      "unique_ratio": 0.25
+    },
+    {
+      "examples": [
+        "Москва",
+        "Санкт-Петербург",
+        "Казань"
+      ],
+      "id_reason": null,
+      "is_constant": false,
+      "is_imbalanced": false,
+      "is_probable_id": false,
+      "missing_count": 0,
+      "missing_ratio": 0.0,
+      "name": "city",
+      "semantic_type": "categorical",
+      "unique_count": 12,
+      "unique_ratio": 1.0
+    },
+    {
+      "examples": [
+        "2023-01-15",
+        "2024-06-02",
+        "2022-03-30"
+      ],
+      "id_reason": null,
+      "is_constant": false,
+      "is_imbalanced": false,
+      "is_probable_id": false,
+      "missing_count": 0,
+      "missing_ratio": 0.0,
+      "name": "signup_date",
+      "semantic_type": "datetime",
+      "unique_count": 12,
+      "unique_ratio": 1.0
+    },
+    {
+      "examples": [
+        false,
+        true,
+        false
+      ],
+      "id_reason": null,
+      "is_constant": false,
+      "is_imbalanced": false,
+      "is_probable_id": false,
+      "missing_count": 1,
+      "missing_ratio": 0.083333,
+      "name": "churned",
+      "semantic_type": "boolean",
+      "unique_count": 3,
+      "unique_ratio": 0.25
+    },
+    {
+      "examples": [
+        "ok",
+        "перенос тарифа",
+        "ok"
+      ],
+      "id_reason": null,
+      "is_constant": false,
+      "is_imbalanced": false,
+      "is_probable_id": false,
+      "missing_count": 3,
+      "missing_ratio": 0.25,
+      "name": "internal_note",
+      "semantic_type": "text",
+      "unique_count": 5,
+      "unique_ratio": 0.416667
+    }
+  ],
+  "computed_at": "2026-09-06T18:42:11.482Z",
+  "computed_on": {
+    "rows": 12,
+    "sampled": false
+  },
+  "correlation": {
+    "columns": [
+      "monthly_spend",
+      "tenure_months"
+    ],
+    "high_pairs": [
+      {
+        "a": "monthly_spend",
+        "b": "tenure_months",
+        "method": "spearman",
+        "value": 0.61
+      }
+    ],
+    "matrix": [
+      [
+        1.0,
+        0.61
+      ],
+      [
+        0.61,
+        1.0
+      ]
+    ],
+    "method": "spearman"
+  },
+  "dataset": {
+    "column_count": 8,
+    "duplicate_row_count": 0,
+    "missing_cell_count": 6,
+    "missing_cell_ratio": 0.0625,
+    "quality_breakdown": {
+      "max_score": 100,
+      "penalties": [
+        {
+          "explanation": "Доля пустых ячеек во всём датасете.",
+          "key": "missing_cells",
+          "label": "Пропуски в ячейках",
+          "penalty": 5.0,
+          "ratio": 0.083333,
+          "weight": 60.0
+        },
+        {
+          "explanation": "Доля почти уникальных колонок.",
+          "key": "id_like_columns",
+          "label": "ID-подобные колонки",
+          "penalty": 2.5,
+          "ratio": 0.125,
+          "weight": 20.0
+        },
+        {
+          "explanation": "Доля числовых значений за границами полутора межквартильных размахов.",
+          "key": "outlier_values",
+          "label": "Выбросы (1,5 IQR)",
+          "penalty": 2.0,
+          "ratio": 0.1,
+          "weight": 20.0
+        },
+        {
+          "explanation": "Доля категориальных колонок с очень большим числом различных значений.",
+          "key": "high_cardinality_columns",
+          "label": "Высокая кардинальность",
+          "penalty": 2.5,
+          "ratio": 0.25,
+          "weight": 10.0
+        }
+      ],
+      "score": 88,
+      "total_penalty": 12.0
+    },
+    "quality_score": 88,
+    "row_count": 12
+  },
+  "findings": [
+    {
+      "column": "monthly_spend",
+      "count": 1,
+      "drilldown": {
+        "dialect": "duckdb",
+        "kind": "sql",
+        "query": "SELECT * FROM dataset WHERE monthly_spend > 890.4062 OR monthly_spend < -171.8438",
+        "row_indexes": [
+          4
+        ]
+      },
+      "explanation": "1 значений выходят за границы полутора межквартильных размахов.",
+      "id": "outliers.monthly_spend",
+      "kind": "outliers",
+      "method": "iqr_1.5",
+      "severity": "warning",
+      "threshold": {
+        "lower": -171.8438,
+        "upper": 890.4062
+      }
+    },
+    {
+      "column": "internal_note",
+      "count": 3,
+      "drilldown": {
+        "dialect": "duckdb",
+        "kind": "sql",
+        "query": "SELECT * FROM dataset WHERE internal_note IS NULL",
+        "row_indexes": [
+          1,
+          5,
+          11
+        ]
+      },
+      "explanation": "Колонка заполнена не для всех строк.",
+      "id": "missing.internal_note",
+      "kind": "missing",
+      "method": "null_count",
+      "severity": "info"
+    }
+  ],
+  "format_version": "1.0.0",
+  "suspicious_columns": [
+    {
+      "column": "internal_note",
+      "reason": "свободный текст, заполняемый оператором; часть значений появляется после события",
+      "recommendation": "проверить момент заполнения относительно предсказываемого события"
+    }
+  ]
+}

@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.core.errors import AppError, DatasetNotFoundError, WorkspaceNotFoundError
+from backend.core.logging import get_logger
 from backend.domain.dataset.aliases import alias_from_name, next_free_alias
 from backend.domain.dataset.identifiers import (
     ensure_dataset_id,
@@ -43,16 +44,27 @@ from backend.domain.health.models import (
     finding_from_storage,
     finding_to_storage,
 )
+from backend.domain.lineage.models import (
+    Origin,
+    Provenance,
+    ProvenanceError,
+    UnknownReason,
+    UploadSource,
+)
+from backend.domain.pipeline.models import Pipeline, PipelineError
 from backend.domain.sql.models import QueryRun, QueryStatus, SavedQuery
 
 #Методы добавляются вместе со своим потребителем. attach_derived, set_status,
 #list_workspaces и delete_dataset были написаны «под будущий API» и удалены при разборе:
 #интерфейс без вызывающего невозможно проверить, и он устаревает раньше, чем понадобится.
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 8
 #история одного рабочего пространства не растёт бесконечно: предел выбран так, чтобы
 #перекрыть рабочий день и не превратить хранилище в журнал без конца
 MAX_HISTORY_PER_WORKSPACE = 500
+#предел записи о происхождении. Снимок каждого из двух родителей ограничен сборщиком
+#двумя мегабайтами; запись больше этого предела не создаётся штатно и считается повреждённой
+MAX_PROVENANCE_CHARS = 8 * 1024 * 1024
 
 
 class IncompatibleStoreError(AppError):
@@ -106,7 +118,11 @@ CREATE TABLE IF NOT EXISTS datasets (
     -- имя, под которым датасет доступен в SQL. Пользователь не передаёт путь: он пишет
     -- FROM продажи, и связывание с артефактом делает backend
     alias             TEXT NOT NULL DEFAULT '',
-    created_at        TEXT NOT NULL
+    created_at        TEXT NOT NULL,
+    -- 1 — датасет адресуется содержимым: повторная загрузка того же файла возвращает его же.
+    -- 0 — датасет создан событием (сборкой): у него своя история, и совпадение байтов
+    -- с другим датасетом не делает их одной сущностью
+    content_addressed INTEGER NOT NULL DEFAULT 1
 );
 
 -- производный артефакт хранится отдельной записью, а не полем датасета:
@@ -175,11 +191,27 @@ CREATE TABLE IF NOT EXISTS dataset_health (
     checks_version      INTEGER NOT NULL,
     computed_at         TEXT NOT NULL,
     total_rows          INTEGER NOT NULL,
-    findings_json       TEXT NOT NULL
+    findings_json       TEXT NOT NULL,
+    -- размер и время правки артефакта на момент расчёта
+    artifact_stamp      TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS dataset_provenance (
+    dataset_id  TEXT PRIMARY KEY REFERENCES datasets(dataset_id) ON DELETE CASCADE,
+    -- как датасет создан: загрузкой файла или соединением двух других. Это известно
+    -- только в момент создания и не восстанавливается потом ничем
+    document    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dataset_pipelines (
+    dataset_id  TEXT PRIMARY KEY REFERENCES datasets(dataset_id) ON DELETE CASCADE,
+    -- шаги вместе с историей отмены: конвейер обязан переживать перезагрузку страницы,
+    -- и отмена после неё работает так же, как до
+    document    TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
 );
 -- один и тот же файл, загруженный дважды в один workspace, не должен становиться двумя
 -- датасетами: содержимое одинаковое, и вторая карточка только запутает
-CREATE UNIQUE INDEX IF NOT EXISTS datasets_by_content ON datasets(workspace_id, source_sha256);
+CREATE UNIQUE INDEX IF NOT EXISTS datasets_by_content ON datasets(workspace_id, source_sha256)
+    WHERE content_addressed = 1;
 -- псевдоним однозначен внутри рабочего пространства: иначе FROM продажи неоднозначно
 CREATE UNIQUE INDEX IF NOT EXISTS datasets_by_alias ON datasets(workspace_id, alias);
 """
@@ -245,6 +277,10 @@ class WorkspaceStore:
 
             connection.executescript(_SCHEMA)
 
+            if stored is not None and stored < 7:  # noqa: PLR2004 - номер версии схемы
+                #после создания схемы: у базы до версии 6 таблицы происхождения ещё нет
+                self._backfill_upload_provenance(connection, stored)
+
             if stored is None:
                 connection.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
             elif stored != SCHEMA_VERSION:
@@ -271,6 +307,126 @@ class WorkspaceStore:
 
         #переход 2 → 3 добавляет только новую таблицу, и её создаёт сама схема:
         #существующие данные не преобразуются, поэтому отдельного шага здесь нет
+
+        if stored < 4:  # noqa: PLR2004 - номер версии схемы
+            self._migrate_3_to_4(connection)
+
+        if stored < 8:  # noqa: PLR2004 - номер версии схемы
+            self._migrate_7_to_8(connection)
+
+        #переходы 4 → 5 и 5 → 6 добавляют только новые таблицы, и их создаёт сама схема.
+        #Переход 6 → 7 дописывает происхождение там, где его можно вывести строго, —
+        #это делает `_backfill_upload_provenance` уже после создания схемы
+
+    @staticmethod
+    def _migrate_7_to_8(connection: sqlite3.Connection) -> None:
+        """Результат сборки перестаёт быть адресом содержимого.
+
+        До версии 8 уникальный индекс по отпечатку действовал для всех датасетов, и сборка,
+        совпавшая байтами с существующим датасетом, возвращала его — с чужим именем, чужим
+        видом соединения и чужой историей. Теперь уникальность остаётся только у загрузок.
+
+        Шаг повторяем: столбец добавляется, если его нет, индекс пересоздаёт скрипт схемы.
+        """
+        exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'datasets'"
+        ).fetchone()
+
+        if exists is None:
+            return
+
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(datasets)")}
+
+        if "content_addressed" not in columns:
+            connection.execute(
+                "ALTER TABLE datasets ADD COLUMN content_addressed INTEGER NOT NULL DEFAULT 1"
+            )
+
+        #прежний индекс — без условия; скрипт схемы создаст новый только если старого нет
+        connection.execute("DROP INDEX IF EXISTS datasets_by_content")
+        provenance_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dataset_provenance'"
+        ).fetchone()
+
+        if provenance_table is None:
+            return
+
+        for row in connection.execute("SELECT dataset_id, document FROM dataset_provenance").fetchall():
+            try:
+                provenance = Provenance.from_dict(json.loads(row["document"]))
+            except (json.JSONDecodeError, ProvenanceError, RecursionError):
+                #повреждённая запись: способ создания неизвестен, и датасет остаётся таким,
+                #каким был, — адресом содержимого
+                continue
+
+            if provenance.origin is Origin.JOIN:
+                connection.execute(
+                    "UPDATE datasets SET content_addressed = 0 WHERE dataset_id = ?",
+                    (row["dataset_id"],),
+                )
+
+    @staticmethod
+    def _backfill_upload_provenance(connection: sqlite3.Connection, stored: int) -> None:
+        """Явная запись «загружен файлом» там, где это известно, а не предполагается.
+
+        С версии 7 отсутствие записи означает «происхождение неизвестно». Поэтому датасеты,
+        созданные раньше, получают запись только если способ их создания выводится строго:
+
+        * база версии 3 и старше создана до появления соединений — всё в ней загружено;
+        * соединение всегда сохраняет результат в Parquet, поэтому датасет любого другого
+          формата загружен файлом, в какой бы версии он ни появился.
+
+        Parquet из баз версий 4–6 может оказаться и загрузкой, и сборкой без записи. Отличить
+        их нечем, и такие датасеты остаются неизвестными — угаданное происхождение хуже
+        честного «неизвестно».
+        """
+        #соединения появились в версии 4: всё, что старше, — загрузки
+        every_dataset_was_uploaded = stored <= 3  # noqa: PLR2004 - номер версии схемы
+        rows = connection.execute(
+            """
+            SELECT dataset_id, source_file_name, source_format, source_sha256, source_bytes
+            FROM datasets
+            WHERE dataset_id NOT IN (SELECT dataset_id FROM dataset_provenance)
+              AND (? OR source_format <> 'parquet')
+            """,
+            (every_dataset_was_uploaded,),
+        ).fetchall()
+
+        for row in rows:
+            #файл берётся из неизменной записи самого датасета: она сделана при загрузке
+            provenance = Provenance.upload(
+                UploadSource(
+                    file_name=row["source_file_name"],
+                    format=row["source_format"],
+                    sha256=row["source_sha256"],
+                    bytes=int(row["source_bytes"]),
+                )
+            )
+            WorkspaceStore._insert_provenance(connection, row["dataset_id"], provenance)
+
+    @staticmethod
+    def _migrate_3_to_4(connection: sqlite3.Connection) -> None:
+        """Добавляет метку артефакта в сохранённый отчёт диагностики.
+
+        У отчётов, посчитанных прежней версией, метки нет. Пустая метка не совпадёт
+        ни с одной настоящей, и такой отчёт будет пересчитан при первом открытии —
+        это верно: проверить, тот ли это файл, для него уже невозможно.
+        """
+        #миграции выполняются ДО создания схемы, поэтому у базы версии 1 или 2 таблицы
+        #диагностики ещё нет: её создаст сам скрипт схемы, уже со столбцом метки
+        exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dataset_health'"
+        ).fetchone()
+
+        if exists is None:
+            return
+
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(dataset_health)")}
+
+        if "artifact_stamp" not in columns:
+            connection.execute(
+                "ALTER TABLE dataset_health ADD COLUMN artifact_stamp TEXT NOT NULL DEFAULT ''"
+            )
 
     @staticmethod
     def _migrate_1_to_2(connection: sqlite3.Connection) -> None:
@@ -347,6 +503,26 @@ class WorkspaceStore:
         workspace.datasets = self._attach_derived_rows(dataset_rows, derived_rows)
         return workspace
 
+    def paths_used_by_other_workspaces(self, workspace_id: str) -> set[str]:
+        """Файлы, на которые ссылаются производные артефакты других пространств.
+
+        До версии 8 конвертация переиспользовалась между пространствами, и такие ссылки
+        в базах остались: удалять эти файлы вместе с пространством нельзя.
+        """
+        ensure_workspace_id(workspace_id)
+
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT derived_artifacts.path FROM derived_artifacts
+                JOIN datasets USING (dataset_id)
+                WHERE datasets.workspace_id <> ?
+                """,
+                (workspace_id,),
+            ).fetchall()
+
+        return {str(row["path"]) for row in rows}
+
     def delete_workspace(self, workspace_id: str) -> None:
         ensure_workspace_id(workspace_id)
 
@@ -358,7 +534,34 @@ class WorkspaceStore:
 
     # ── datasets ──────────────────────────────────────────────────────────────
 
-    def add_dataset(self, dataset: Dataset) -> Dataset:
+    def delete_dataset(self, workspace_id: str, dataset_id: str) -> None:
+        """Удаляет датасет вместе с его диагностикой, конвейером и происхождением (каскадом).
+
+        Принадлежность пространству — часть условия: датасет чужого пространства
+        выглядит как несуществующий.
+        """
+        ensure_workspace_id(workspace_id)
+
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM datasets WHERE dataset_id = ? AND workspace_id = ?", (dataset_id, workspace_id)
+            )
+
+            if cursor.rowcount == 0:
+                raise DatasetNotFoundError(f"Датасет {dataset_id} не найден.")
+
+
+    def add_dataset(
+        self, dataset: Dataset, provenance: Provenance, *, content_addressed: bool
+    ) -> Dataset:
+        """Регистрирует датасет вместе с тем, как он создан, — одной транзакцией.
+
+        `content_addressed` — адресуется ли датасет содержимым: загрузка того же файла
+        возвращает прежний датасет, а сборка всегда создаёт новый, даже при совпадении байтов.
+
+        Отдельной записью после регистрации происхождение терялось бы при любом сбое между
+        ними, и собранный датасет навсегда остался бы «файлом из ниоткуда».
+        """
         ensure_dataset_id(dataset.dataset_id)
         ensure_workspace_id(dataset.workspace_id)
 
@@ -376,7 +579,8 @@ class WorkspaceStore:
             dataset.alias = self._free_alias(connection, dataset.workspace_id, dataset.name)
 
             try:
-                self._insert_dataset(connection, dataset)
+                self._insert_dataset(connection, dataset, content_addressed=content_addressed)
+                self._insert_provenance(connection, dataset.dataset_id, provenance)
             except sqlite3.IntegrityError as error:
                 raise DuplicateDatasetError(
                     "Датасет с таким содержимым уже есть в этом workspace.",
@@ -397,14 +601,16 @@ class WorkspaceStore:
         return next_free_alias(alias_from_name(name), taken)
 
     @staticmethod
-    def _insert_dataset(connection: sqlite3.Connection, dataset: Dataset) -> None:
+    def _insert_dataset(
+        connection: sqlite3.Connection, dataset: Dataset, *, content_addressed: bool
+    ) -> None:
         connection.execute(
             """
                 INSERT INTO datasets (
                     dataset_id, workspace_id, name, source_file_name, source_format,
                     source_bytes, source_sha256, schema_json, row_count,
-                    status, status_reason, alias, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    status, status_reason, alias, created_at, content_addressed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             (
                 dataset.dataset_id,
@@ -420,6 +626,7 @@ class WorkspaceStore:
                 dataset.status_reason,
                 dataset.alias,
                 dataset.created_at.isoformat(),
+                int(content_addressed),
             ),
         )
 
@@ -433,7 +640,8 @@ class WorkspaceStore:
 
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM datasets WHERE workspace_id = ? AND source_sha256 = ?",
+                "SELECT * FROM datasets"
+                " WHERE workspace_id = ? AND source_sha256 = ? AND content_addressed = 1",
                 (workspace_id, sha256),
             ).fetchone()
 
@@ -528,18 +736,25 @@ class WorkspaceStore:
 
 
     def find_reusable_derived(
-        self, source_sha256: str, converter: str, converter_version: int
+        self, workspace_id: str, source_sha256: str, converter: str, converter_version: int
     ) -> DerivedArtifact | None:
         # повторная загрузка того же файла не должна запускать конвертацию заново
-        # версия конвертера входит в условие: при её смене прежний артефакт недействителен
+        # версия конвертера входит в условие: при её смене прежний артефакт недействителен.
+        # Поиск — только в своём рабочем пространстве: прежде датасет пространства B
+        # указывал на файл в каталоге пространства A, и удаление A лишило бы B данных
+        ensure_workspace_id(workspace_id)
+
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT * FROM derived_artifacts
-                WHERE source_sha256 = ? AND converter = ? AND converter_version = ?
-                ORDER BY created_at DESC LIMIT 1
+                SELECT derived_artifacts.* FROM derived_artifacts
+                JOIN datasets USING (dataset_id)
+                WHERE datasets.workspace_id = ?
+                  AND derived_artifacts.source_sha256 = ?
+                  AND converter = ? AND converter_version = ?
+                ORDER BY derived_artifacts.created_at DESC LIMIT 1
                 """,
-                (source_sha256, converter, converter_version),
+                (workspace_id, source_sha256, converter, converter_version),
             ).fetchone()
 
         return self._derived_from_row(row) if row else None
@@ -858,6 +1073,119 @@ class WorkspaceStore:
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
 
+    # ── происхождение датасета ────────────────────────────────────────────────
+
+    def get_provenance(self, dataset_id: str) -> Provenance:
+        """Как датасет создан.
+
+        Отсутствие записи и повреждённая запись — «неизвестно», а не «загружен файлом»:
+        с версии 7 каждый новый датасет получает запись при создании, и её отсутствие
+        означает датасет из прошлого, чьё происхождение восстановить нечем.
+        """
+        ensure_dataset_id(dataset_id)
+
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT document FROM dataset_provenance WHERE dataset_id = ?", (dataset_id,)
+            ).fetchone()
+
+        if row is None:
+            return Provenance.unknown(UnknownReason.MISSING_RECORD)
+
+        if len(row["document"]) > MAX_PROVENANCE_CHARS:
+            #запись такого размера не пишет ни одна сборка: снимок родителя ограничен.
+            #Разбирать её ради справки значило бы отдать мегабайты в каждый ответ раздела
+            get_logger().warning(
+                "Запись о происхождении больше предела", extra={"dataset_id": dataset_id}
+            )
+            return Provenance.unknown(UnknownReason.OVERSIZED_RECORD)
+
+        try:
+            return Provenance.from_dict(json.loads(row["document"]))
+        except (json.JSONDecodeError, ProvenanceError, RecursionError):
+            #запись повреждена. Здесь, в отличие от конвейера, это не мешает работать:
+            #происхождение — справка, а не поведение. Но и собрать из обломков правдоподобный
+            #ответ нельзя: раздел говорит «неизвестно» и объясняет почему
+            get_logger().warning(
+                "Запись о происхождении повреждена", extra={"dataset_id": dataset_id}
+            )
+            return Provenance.unknown(UnknownReason.CORRUPTED_RECORD)
+
+    @staticmethod
+    def _insert_provenance(
+        connection: sqlite3.Connection, dataset_id: str, provenance: Provenance
+    ) -> None:
+        #только вставка, без замены: происхождение пишется один раз, в момент создания,
+        #и переписать его задним числом не должен никто
+        connection.execute(
+            "INSERT INTO dataset_provenance (dataset_id, document) VALUES (?, ?)",
+            (dataset_id, json.dumps(provenance.to_dict(), ensure_ascii=False)),
+        )
+
+    # ── конвейер преобразований ───────────────────────────────────────────────
+
+    def get_pipeline(self, dataset_id: str) -> Pipeline:
+        """Сохранённый конвейер или пустой. Пустой — это не «нет данных», а «шагов нет»."""
+        ensure_dataset_id(dataset_id)
+
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT document FROM dataset_pipelines WHERE dataset_id = ?", (dataset_id,)
+            ).fetchone()
+
+        if row is None:
+            return Pipeline(dataset_id=dataset_id)
+
+        try:
+            document = json.loads(row["document"])
+        except json.JSONDecodeError as error:
+            #запись повреждена: оборванная запись на диске, ручная правка, сбой носителя.
+            #Молча вернуть пустой конвейер нельзя — шаги пользователя исчезли бы без слова,
+            #и он собрал бы их заново поверх испорченной записи
+            raise PipelineError(
+                "Конвейер датасета повреждён и не читается. Шаги придётся задать заново.",
+                details={"dataset_id": dataset_id},
+            ) from error
+
+        if not isinstance(document, dict):
+            raise PipelineError(
+                "Конвейер датасета повреждён и не читается. Шаги придётся задать заново.",
+                details={"dataset_id": dataset_id},
+            )
+
+        return Pipeline.from_storage(dataset_id, document)
+
+    def save_pipeline(self, pipeline: Pipeline) -> Pipeline:
+        ensure_dataset_id(pipeline.dataset_id)
+
+        with self._lock, self._transaction() as connection:
+            dataset_exists = connection.execute(
+                "SELECT 1 FROM datasets WHERE dataset_id = ?", (pipeline.dataset_id,)
+            ).fetchone()
+
+            if dataset_exists is None:
+                raise DatasetNotFoundError(
+                    f"Датасет {pipeline.dataset_id} не найден.",
+                    details={"dataset_id": pipeline.dataset_id},
+                )
+
+            connection.execute(
+                """
+                INSERT INTO dataset_pipelines (dataset_id, document, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(dataset_id) DO UPDATE SET
+                    document   = excluded.document,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    pipeline.dataset_id,
+                    json.dumps(pipeline.to_storage(), ensure_ascii=False),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+
+        return pipeline
+
     # ── диагностика датасета ──────────────────────────────────────────────────
 
     def get_health(self, dataset_id: str) -> HealthReport | None:
@@ -881,6 +1209,7 @@ class WorkspaceStore:
             findings=tuple(
                 finding_from_storage(item) for item in json.loads(row["findings_json"])
             ),
+            artifact_stamp=row["artifact_stamp"],
         )
 
     def save_health(self, report: HealthReport) -> HealthReport:
@@ -903,14 +1232,15 @@ class WorkspaceStore:
                 """
                 INSERT INTO dataset_health (
                     dataset_id, artifact_fingerprint, checks_version,
-                    computed_at, total_rows, findings_json
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    computed_at, total_rows, findings_json, artifact_stamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(dataset_id) DO UPDATE SET
                     artifact_fingerprint = excluded.artifact_fingerprint,
                     checks_version       = excluded.checks_version,
                     computed_at          = excluded.computed_at,
                     total_rows           = excluded.total_rows,
-                    findings_json        = excluded.findings_json
+                    findings_json        = excluded.findings_json,
+                    artifact_stamp       = excluded.artifact_stamp
                 """,
                 (
                     report.dataset_id,
@@ -922,6 +1252,7 @@ class WorkspaceStore:
                         [finding_to_storage(finding) for finding in report.findings],
                         ensure_ascii=False,
                     ),
+                    report.artifact_stamp,
                 ),
             )
 

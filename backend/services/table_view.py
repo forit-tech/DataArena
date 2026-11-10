@@ -28,9 +28,6 @@ MAX_PAGE_SIZE = 1000
 #длина строки поиска и значения фильтра: длинный ввод не должен превращаться
 #в дорогое сканирование по всем колонкам
 MAX_FILTER_VALUE_LENGTH = 500
-#подсчёт строк после фильтра дороже самой страницы, поэтому он ограничен сверху:
-#точное число за этим пределом пользователю не нужно, а стоит полного прохода
-MAX_EXACT_COUNT_ROWS = 5_000_000
 
 
 class SortDirection(StrEnum):
@@ -85,8 +82,7 @@ class PageResult:
     limit: int
     #число строк после фильтров; None означает «больше предела точного подсчёта»,
     #и интерфейс обязан показать это как «более N», а не как отсутствие данных
-    total_rows: int | None
-    total_is_exact: bool
+    total_rows: int
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -96,7 +92,6 @@ class PageResult:
             "offset": self.offset,
             "limit": self.limit,
             "total_rows": self.total_rows,
-            "total_is_exact": self.total_is_exact,
         }
 
 
@@ -240,7 +235,12 @@ def build_page(
             maintain_order=True,
         )
 
-    total_rows, total_is_exact = _count_rows(plan)
+    #число строк считается полностью и всегда точно. Прежде оно срезалось на пяти
+    #миллионах — и находка диагностики, говорящая «5 999 990 строк», открывала таблицу,
+    #которая показывала «5 000 000»: главное обещание раздела ломалось на обычном
+    #датасете. Срез при этом ничего не экономил: план всё равно считался целиком,
+    #а точное число потом выбрасывалось
+    total_rows = int(plan.select(pl.len()).collect().item())
     page = plan.slice(request.offset, request.limit).collect()
     ordinals = [int(value) for value in page[ordinal].to_list()]
     page = page.drop(ordinal)
@@ -252,7 +252,6 @@ def build_page(
         offset=request.offset,
         limit=request.limit,
         total_rows=total_rows,
-        total_is_exact=total_is_exact,
     )
 
 
@@ -271,17 +270,6 @@ def _free_column_name(schema: pl.Schema) -> str:
         candidate = f"__row_{suffix}__"
 
     return candidate
-
-
-def _count_rows(plan: pl.LazyFrame) -> tuple[int | None, bool]:
-    #подсчёт после фильтра требует прохода по данным, поэтому он ограничен сверху:
-    #точное число за пределом стоит дорого и никому не нужно
-    counted = plan.select(pl.len()).collect().item()
-
-    if counted > MAX_EXACT_COUNT_ROWS:
-        return MAX_EXACT_COUNT_ROWS, False
-
-    return int(counted), True
 
 
 def _filter_expression(spec: FilterSpec, schema: pl.Schema) -> pl.Expr:  # noqa: PLR0911 - диспетчер операций

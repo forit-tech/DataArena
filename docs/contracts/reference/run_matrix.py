@@ -37,6 +37,18 @@ EXPECTED: dict[str, str] = {
     "golden/negative/schema-mismatch.dapkg": "package_schema_mismatch",
     "golden/negative/traversal.dapkg.zip": "package_unsafe_path",
     "golden/negative/zip-bomb.dapkg.zip": "package_limit_exceeded",
+    #1.1.0: история колонок. Старый пакет без неё — сам эталон выше
+    "golden/lineage/upload-lineage.dapkg": ACCEPTED,
+    "golden/lineage/join-lineage.dapkg": ACCEPTED,
+    "golden/lineage/multi-level-lineage.dapkg": ACCEPTED,
+    "golden/lineage/legacy-unknown.dapkg": ACCEPTED,
+    "golden/lineage/truncated-history.dapkg": ACCEPTED,
+    "golden/lineage/future-optional-field.dapkg": ACCEPTED,
+    "golden/lineage/malformed-lineage.dapkg": "package_part_invalid",
+    "golden/lineage/inconsistent-lineage.dapkg": "package_part_invalid",
+    "golden/lineage/oversized-lineage.dapkg": "package_part_invalid",
+    "golden/lineage/nan-lineage.dapkg": "package_part_invalid",
+    "golden/lineage/deep-lineage.dapkg": "package_limit_exceeded",
 }
 
 
@@ -47,7 +59,7 @@ def discover(root: Path) -> list[str]:
     for path in sorted(root.glob("golden/*.dapkg")) + sorted(root.glob("golden/*.dapkg.zip")):
         found.append(path.relative_to(root).as_posix())
 
-    for path in sorted(root.glob("golden/negative/*")):
+    for path in sorted(root.glob("golden/negative/*")) + sorted(root.glob("golden/lineage/*")):
         if path.name.endswith(".dapkg") or path.name.endswith(".dapkg.zip"):
             found.append(path.relative_to(root).as_posix())
 

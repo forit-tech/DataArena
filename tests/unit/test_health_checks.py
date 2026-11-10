@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -29,7 +30,12 @@ from backend.domain.health.models import (
 )
 from backend.services.health import report as health_report
 from backend.services.health.checks import analyse
+from backend.services.health.filter_values import (
+    decode_filter_value,
+    encode_filter_value,
+)
 from backend.services.health.predicates import count_affected, row_filter_expression
+from backend.services.workspace_access import open_dataset
 
 
 def run(frame: pl.DataFrame, tmp_path: Path) -> tuple[list, pl.LazyFrame, pl.Schema]:
@@ -44,12 +50,14 @@ def codes(findings: list) -> set[str]:
     return {finding.code.value for finding in findings}
 
 
-def _prepared_dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def _prepared_dataset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, frame: pl.DataFrame | None = None
+):
     """Настоящий датасет в настоящем хранилище — для проверок пересчёта отчёта."""
     from backend.core import config
     from backend.domain.dataset.identifiers import new_workspace_id
     from backend.services import context
-    from backend.services.dataset_import import import_dataset
+    from backend.services.dataset_import import import_dataset, uploaded
 
     monkeypatch.setenv("DATAARENA_WORKSPACE_ROOT", str(tmp_path / "workspaces"))
     config.get_settings.cache_clear()
@@ -60,8 +68,10 @@ def _prepared_dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     workspace_id = store.create_workspace(new_workspace_id(), "кэш").workspace_id
 
     staging = tmp_path / "upload.part"
-    pl.DataFrame({"a": [None, 1, 2, 3] * 10}).write_parquet(staging)
-    dataset = import_dataset(store, root, workspace_id, staging, "d.parquet")
+    (frame if frame is not None else pl.DataFrame({"a": [None, 1, 2, 3] * 10})).write_parquet(
+        staging
+    )
+    dataset = import_dataset(store, root, workspace_id, staging, "d.parquet", provenance=uploaded, content_addressed=True)
 
     return store, root, workspace_id, dataset.dataset_id
 
@@ -121,21 +131,130 @@ def test_a_dataset_of_a_thousand_columns_is_handled(tmp_path: Path) -> None:
 # ── типы, которые ломают наивные проверки ─────────────────────────────────────
 
 
-def test_boolean_and_decimal_and_dates_do_not_break_the_checks(tmp_path: Path) -> None:
+#колонка каждого типа, почти постоянная: 199 одинаковых значений и одно другое —
+#доля 99,5% выше порога near_constant_share. Именно
+#на такой колонке рождается предикат со значением внутри — единственный вид предиката,
+#которому есть что терять при хранении
+_NEAR_CONSTANT_BY_TYPE: dict[str, pl.Series] = {
+    "текст": pl.Series(["да"] * 199 + ["нет"], dtype=pl.Utf8),
+    "целое": pl.Series([7] * 199 + [8], dtype=pl.Int64),
+    "дробное": pl.Series([1.5] * 199 + [2.5], dtype=pl.Float64),
+    "логика": pl.Series([True] * 199 + [False], dtype=pl.Boolean),
+    "деньги": pl.Series([Decimal("1.2345")] * 199 + [Decimal("9.9999")], dtype=pl.Decimal(10, 4)),
+    "дата": pl.Series([dt.date(2024, 1, 1)] * 199 + [dt.date(2024, 2, 2)], dtype=pl.Date),
+    "момент": pl.Series(
+        [dt.datetime(2024, 1, 1, 10, 30, 15, 123456)] * 199 + [dt.datetime(2024, 2, 2)],
+        dtype=pl.Datetime("us"),
+    ),
+    "момент_с_поясом": pl.Series(
+        [dt.datetime(2024, 1, 1, 10, tzinfo=dt.UTC)] * 199 + [dt.datetime(2024, 2, 2, tzinfo=dt.UTC)],
+        dtype=pl.Datetime("us", "UTC"),
+    ),
+    "время_суток": pl.Series(
+        [dt.time(10, 30, 15, 123456)] * 199 + [dt.time(11, 0)], dtype=pl.Time
+    ),
+    "длительность": pl.Series(
+        [dt.timedelta(seconds=90, microseconds=7)] * 199 + [dt.timedelta(days=1)],
+        dtype=pl.Duration("us"),
+    ),
+    "двоичное": pl.Series([b"\x01\x02\xff"] * 199 + [b"\xfe"], dtype=pl.Binary),
+    "категория": pl.Series(["да"] * 199 + ["нет"], dtype=pl.Categorical),
+    "перечисление": pl.Series(["да"] * 199 + ["нет"], dtype=pl.Enum(["да", "нет"])),
+}
+
+
+def test_a_finding_survives_storage_and_shows_the_same_rows_for_every_column_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Отчёт обязан сохраняться и разрешаться в строки для колонки любого типа.
+
+    Проверка идёт через **настоящее хранилище**, а не через `analyse`: дефект, из-за
+    которого раздел намертво падал с 500 на колонке с почти постоянной датой, жил
+    ровно в сохранении отчёта. Проверка, не доходящая до `save_health`, его не видела.
+    """
+    frame = pl.DataFrame(dict(_NEAR_CONSTANT_BY_TYPE))
+    store, root, workspace_id, dataset_id = _prepared_dataset(tmp_path, monkeypatch, frame)
+
+    report = health_report.get_report(store, root, workspace_id, dataset_id)
+
+    covered = {
+        finding.columns[0]
+        for finding in report.findings
+        if finding.code is CheckCode.NEAR_CONSTANT_COLUMN
+    }
+    assert covered == set(_NEAR_CONSTANT_BY_TYPE), (
+        "находка о почти постоянной колонке пропала для типов: "
+        f"{sorted(set(_NEAR_CONSTANT_BY_TYPE) - covered)}"
+    )
+
+    _, lazy = open_dataset(store, root, workspace_id, dataset_id)
+
+    for finding in report.findings:
+        if finding.row_filter is None:
+            continue
+
+        resolved = health_report.resolve_finding(
+            store,
+            root,
+            workspace_id,
+            dataset_id,
+            finding.identity(dataset_id, report.artifact_fingerprint),
+        )
+        shown = int(lazy.filter(resolved.expression).select(pl.len()).collect().item())
+
+        assert shown == finding.affected_rows, (
+            f"{finding.code.value} по колонке {finding.columns}: "
+            f"находка говорит {finding.affected_rows}, таблица показывает {shown}"
+        )
+
+
+def test_a_column_of_lists_produces_no_finding_instead_of_a_wrong_one(tmp_path: Path) -> None:
+    #у колонки списков доминирующего значения нет: `mode()` отдаёт Series, и сравнение
+    #с ним падает. Правильный ответ — промолчать, а не показать непроверенные строки
     frame = pl.DataFrame(
         {
-            "логика": [True, False, None] * 10,
-            "деньги": [Decimal("1.50")] * 30,
-            "дата": [dt.date(2024, 1, 1 + index % 28) for index in range(30)],
-            "время": [dt.datetime(2024, 1, 1, index % 24, tzinfo=dt.UTC) for index in range(30)],
+            "списки": pl.Series([[1, 2]] * 199 + [[3]], dtype=pl.List(pl.Int64)),
+            "текст": pl.Series(["да"] * 199 + ["нет"], dtype=pl.Utf8),
         }
     )
     findings, lazy, schema = run(frame, tmp_path)
 
+    assert not [
+        finding
+        for finding in findings
+        if finding.code is CheckCode.NEAR_CONSTANT_COLUMN and finding.columns == ("списки",)
+    ]
+    assert [
+        finding
+        for finding in findings
+        if finding.code is CheckCode.NEAR_CONSTANT_COLUMN and finding.columns == ("текст",)
+    ], "соседняя обычная колонка обязана остаться проверенной"
+
     for finding in findings:
         if finding.row_filter is not None:
-            #каждый предикат обязан строиться и считаться, а не падать на редком типе
             assert count_affected(lazy, finding.row_filter, schema) == finding.affected_rows
+
+
+def test_a_stored_predicate_value_selects_the_same_rows_as_the_original_value(
+    tmp_path: Path,
+) -> None:
+    """Значение после хранения обязано отбирать те же строки, что и исходное.
+
+    Сверка идёт с **исходным значением Polars**, а не с другим предикатом: находка и
+    провал в строки идут одним путём и согласятся друг с другом даже тогда, когда оба
+    неверны. Измерено: `timedelta` через секунды и `bytes` через описание не падают,
+    а отбирают 3 строки вместо 1.
+    """
+    for name, series in _NEAR_CONSTANT_BY_TYPE.items():
+        frame = pl.DataFrame({name: series})
+        dtype = frame.schema[name]
+        native = frame.select(pl.col(name).drop_nulls().mode().first()).item()
+        truth = frame.filter(pl.col(name).ne_missing(native)).height
+
+        stored = json.loads(json.dumps(encode_filter_value(native, dtype)))
+        restored = frame.filter(pl.col(name).ne_missing(decode_filter_value(stored, dtype))).height
+
+        assert restored == truth, f"{name}: после хранения {restored} строк вместо {truth}"
 
 
 def test_nan_and_infinity_are_reported_once_and_not_as_outliers(tmp_path: Path) -> None:
@@ -454,3 +573,187 @@ def test_an_unchanged_dataset_is_not_recomputed(
     again = health_report.get_report(store, root, workspace_id, dataset_id)
 
     assert again.computed_at == first.computed_at
+
+
+# ── находки, исправленные враждебным разбором ─────────────────────────────────
+
+
+def test_categorical_and_enum_are_checked_like_text(tmp_path: Path) -> None:
+    """Словарная колонка — тот же текст, и проверяться обязана так же.
+
+    Parquet, записанный pandas или pyarrow, хранит категории словарём. Пока проверки
+    смотрели только на `Utf8`, такая колонка молча минула разнописание регистра,
+    краевые пробелы и пустые строки — а отчёт говорил «ничего не нашли».
+    """
+    values = ["Москва", "москва", "Казань ", "", "Омск", None]
+    found: dict[str, set[str]] = {}
+
+    for label, dtype in (
+        ("текст", pl.Utf8),
+        ("категория", pl.Categorical),
+        ("перечисление", pl.Enum(["Москва", "москва", "Казань ", "", "Омск"])),
+    ):
+        frame = pl.DataFrame({"город": pl.Series(values * 50, dtype=dtype)})
+        directory = tmp_path / label
+        directory.mkdir()
+        findings, lazy, schema = run(frame, directory)
+        found[label] = codes(findings)
+
+        for finding in findings:
+            if finding.row_filter is not None:
+                assert count_affected(lazy, finding.row_filter, schema) == finding.affected_rows
+
+    assert found["категория"] == found["текст"], "категориальная колонка проверена не так же"
+    assert found["перечисление"] == found["текст"], "перечисление проверено не так же"
+
+
+def test_a_finding_about_repeats_is_not_produced_when_there_are_none(tmp_path: Path) -> None:
+    """Предупреждение «0 строк повторяют значение» — это не находка, а шум.
+
+    За порогом приближения кардинальность считается HyperLogLog, и он ошибается
+    на доли процента. Недооценки хватало, чтобы уникальная колонка объявлялась
+    колонкой с повторами: предупреждение, кнопка «Показать строки» и пустая таблица.
+    """
+    frame = pl.DataFrame({"ключ": list(range(300))})
+    findings, _, _ = run(frame, tmp_path)
+
+    repeats = [item for item in findings if item.code is CheckCode.DUPLICATE_KEYS]
+
+    assert repeats == [], "находка о повторах выпущена при нуле повторов"
+
+
+def test_a_constant_column_admits_it_was_judged_by_an_estimate(tmp_path: Path) -> None:
+    #постоянство выводится из кардинальности, а за порогом она приближённая:
+    #подпись «точный подсчёт» под такой находкой — это оценка, выданная за факт
+    from backend.services.health import checks
+
+    frame = pl.DataFrame({"одно": ["x"] * 60, "разное": list(range(60))})
+    path = tmp_path / "d.parquet"
+    frame.write_parquet(path)
+    lazy = pl.scan_parquet(path)
+
+    exact = checks.analyse(lazy, lazy.collect_schema(), frame.height)
+    constant_exact = next(f for f in exact if f.code is CheckCode.CONSTANT_COLUMN)
+    assert constant_exact.exactness is Exactness.EXACT
+
+    #порог опускается так, чтобы кардинальность считалась приближённо
+    original = checks.APPROXIMATE_CARDINALITY_CELLS
+    checks.APPROXIMATE_CARDINALITY_CELLS = 1
+
+    try:
+        sampled = checks.analyse(lazy, lazy.collect_schema(), frame.height)
+    finally:
+        checks.APPROXIMATE_CARDINALITY_CELLS = original
+
+    constant_sampled = next(f for f in sampled if f.code is CheckCode.CONSTANT_COLUMN)
+    assert constant_sampled.exactness is Exactness.SAMPLED
+    assert constant_sampled.sampled_rows == frame.height
+
+
+def test_case_variants_report_all_groups_even_when_rows_are_shown_for_some(
+    tmp_path: Path,
+) -> None:
+    """Находка обязана называть полное число расхождений, а не показанное.
+
+    Прежде при пятистах расходящихся группах она сообщала «записаны по-разному:
+    200 значений»: человек исправлял их, открывал заново — и видел следующие 200,
+    не понимая, откуда они взялись.
+    """
+    groups = 500
+    frame = pl.DataFrame(
+        {"город": [f"Город{index}" if side == 0 else f"город{index}"
+                   for index in range(groups) for side in (0, 1)]}
+    )
+    findings, lazy, schema = run(frame, tmp_path)
+    finding = next(item for item in findings if item.code is CheckCode.CASE_VARIANT_CATEGORIES)
+
+    assert finding.evidence.counts["groups"] == groups
+    assert f"{groups}" in finding.explanation
+    assert "Строки показаны для" in finding.explanation, "усечение не признано"
+    #инвариант при этом держится: сколько сказано строк, столько и отберётся
+    assert count_affected(lazy, finding.row_filter, schema) == finding.affected_rows
+
+
+def test_the_report_is_recomputed_when_the_artifact_is_replaced_behind_our_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Артефакт — обычный файл, и его можно перезаписать мимо DataArena.
+
+    Отпечаток хранится в записи датасета и при этом не меняется, поэтому отчёт
+    оставался «актуальным»: находка обещала 25 строк, а в датасете их стало 100.
+    """
+    from backend.services.workspace_access import reading_path
+
+    store, root, workspace_id, dataset_id = _prepared_dataset(tmp_path, monkeypatch)
+    first = health_report.get_report(store, root, workspace_id, dataset_id)
+
+    path = reading_path(root, store.get_dataset(dataset_id))
+    pl.DataFrame({"a": list(range(400))}).write_parquet(path)
+
+    again = health_report.get_report(store, root, workspace_id, dataset_id)
+
+    assert again.total_rows != first.total_rows, "отчёт описывает данные, которых больше нет"
+    assert again.artifact_stamp != first.artifact_stamp
+
+
+def test_a_huge_value_does_not_end_up_in_the_stored_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Отчёт на 300 строк весил два мегабайта, а ответ API — нет.
+
+    Доминирующее значение уходило в предикат целиком. В ответе его не видно (пример
+    обрезается), поэтому заметить это можно было только по размеру базы — то есть поздно.
+    Находка при этом остаётся верной: исчезает только провал в строки.
+    """
+    frame = pl.DataFrame({"текст": ["ц" * 100_000] * 199 + ["другое"]})
+    store, root, workspace_id, dataset_id = _prepared_dataset(tmp_path, monkeypatch, frame)
+
+    report = health_report.get_report(store, root, workspace_id, dataset_id)
+    near = next(
+        item for item in report.findings if item.code is CheckCode.NEAR_CONSTANT_COLUMN
+    )
+
+    assert near.affected_rows == 1, "находка обязана остаться верной"
+    assert near.row_filter is None, "огромное значение не должно попасть в предикат"
+
+    stored = json.dumps(
+        [finding_to_storage(item) for item in report.findings], ensure_ascii=False
+    )
+    assert len(stored) < 20_000, f"сохранённый отчёт занял {len(stored)} символов"
+
+
+def test_parallel_requests_compute_the_report_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Восемь вкладок считали один и тот же отчёт восемь раз.
+
+    Целостность при этом не страдала — побеждала последняя запись, — но на датасете,
+    где расчёт стоит секунды и сотни мегабайт, это восьмикратная плата за одно и то же.
+    """
+    import threading
+
+    store, root, workspace_id, dataset_id = _prepared_dataset(tmp_path, monkeypatch)
+    computed = 0
+    original = health_report._compute
+
+    def counting(*args, **kwargs):
+        nonlocal computed
+        computed += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(health_report, "_compute", counting)
+
+    threads = [
+        threading.Thread(
+            target=lambda: health_report.get_report(store, root, workspace_id, dataset_id)
+        )
+        for _ in range(8)
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    assert computed == 1, f"отчёт посчитан {computed} раз вместо одного"

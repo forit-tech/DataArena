@@ -76,6 +76,13 @@ class DatasetBindingResponse(BaseModel):
     column_count: int
     columns: list[str]
     queryable: bool = Field(description="Ложь, если датасет не готов к чтению.")
+    has_pipeline_steps: bool | None = Field(
+        default=False,
+        description=(
+            "У датасета есть шаги конвейера, которых SQL не видит: запрос читает "
+            "исходный артефакт."
+        ),
+    )
 
 
 class DatasetBindingsResponse(BaseModel):

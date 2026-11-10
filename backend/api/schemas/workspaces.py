@@ -89,12 +89,9 @@ class PageResponse(BaseModel):
     )
     offset: int
     limit: int
-    total_rows: int | None = Field(
-        description="Число строк после фильтров. Может быть срезано сверху — см. total_is_exact."
-    )
-    total_is_exact: bool = Field(
-        description="False означает, что строк больше total_rows: точный подсчёт за этим "
-        "пределом стоит полного прохода по данным."
+    total_rows: int = Field(
+        description="Число строк после фильтров. Всегда точное: срез, из-за которого "
+        "число в находке расходилось с числом в таблице, убран."
     )
 
 

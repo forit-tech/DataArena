@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../types/dataset";
@@ -59,7 +59,6 @@ const PAGE = {
   offset: 0,
   limit: 200,
   total_rows: 3,
-  total_is_exact: true,
 };
 
 function stubRows(handler: (url: string) => Response | Error | Promise<Response>): void {
@@ -102,7 +101,8 @@ describe("таблица датасета", () => {
     render(<DatasetTable dataset={DATASET} />);
 
     expect(await screen.findByText("Москва")).toBeInTheDocument();
-    expect(screen.getByText("1–3 из 3")).toBeInTheDocument();
+    //#число строк — под таблицей справа
+    expect(screen.getByText("3 строки")).toBeInTheDocument();
   });
 
   it("пропуск показывается явно и отличается от пустой строки", async () => {
@@ -127,7 +127,7 @@ describe("таблица датасета", () => {
     render(<DatasetTable dataset={DATASET} />);
     await screen.findByText("Москва");
 
-    await userEvent.click(screen.getByRole("button", { name: /сумма/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Сортировать по колонке сумма" }));
 
     await waitFor(() => {
       expect(urls.some((url) => url.includes("sort=%D1%81%D1%83%D0%BC%D0%BC%D0%B0%3Aasc"))).toBe(
@@ -168,7 +168,9 @@ describe("таблица датасета", () => {
     });
 
     render(<DatasetTable dataset={DATASET} />);
-    await userEvent.click(await screen.findByRole("button", { name: /сумма/ }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Сортировать по колонке сумма" }),
+    );
 
     await waitFor(() => expect(screen.getByText("Москва")).toBeInTheDocument());
     await new Promise((resolve) => setTimeout(resolve, 120));
@@ -203,23 +205,39 @@ describe("таблица датасета", () => {
     expect(await screen.findByText(/Ни одна строка не подошла/)).toBeInTheDocument();
   });
 
-  it("неточный подсчёт показывается как «более N», а не как точное число", async () => {
-    //#выдавать срезанное число за точное значило бы соврать о размере данных
-    stubRows(() => json({ ...PAGE, total_rows: 5_000_000, total_is_exact: false }));
+  it("число строк показывается точно и за пределом в пять миллионов", async () => {
+    //#счётчик срезался на 5 000 000, и находка диагностики «5 999 990 строк» открывала
+    //#таблицу, показывающую «5 000 000». Обещание «сколько сказала находка, столько
+    //#и в таблице» ломалось на обычном датасете, без всяких краевых случаев
+    stubRows(() => json({ ...PAGE, total_rows: 5_999_990 }));
 
     render(<DatasetTable dataset={DATASET} />);
 
-    expect(await screen.findByText(/более/)).toBeInTheDocument();
+    expect(await screen.findByText(/5 999 990/)).toBeInTheDocument();
+    expect(screen.queryByText(/более/)).not.toBeInTheDocument();
   });
 
-  it("кнопка «Вперёд» недоступна, когда следующей страницы нет", async () => {
+  it("когда страница одна, навигации по страницам нет вовсе", async () => {
     stubRows(() => json(PAGE));
 
     render(<DatasetTable dataset={DATASET} />);
     await screen.findByText("Москва");
 
-    expect(screen.getByRole("button", { name: "Вперёд" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Назад" })).toBeDisabled();
+    expect(screen.queryByRole("navigation", { name: "Страницы" })).not.toBeInTheDocument();
+  });
+
+  it("страницы пронумерованы, текущая отмечена, дальние свёрнуты в многоточие", async () => {
+    stubRows(() => json({ ...PAGE, total_rows: 20_000 }));
+
+    render(<DatasetTable dataset={DATASET} />);
+    await screen.findByText("Москва");
+
+    const pager = screen.getByRole("navigation", { name: "Страницы" });
+    expect(within(pager).getByRole("button", { name: "1" })).toHaveAttribute("aria-current", "page");
+    expect(within(pager).getByRole("button", { name: "100" })).toBeInTheDocument();
+    expect(within(pager).getByText("…")).toBeInTheDocument();
+    expect(within(pager).getByRole("button", { name: "Предыдущая страница" })).toBeDisabled();
+    expect(within(pager).getByRole("button", { name: "Следующая страница" })).toBeEnabled();
   });
 
   it("в браузер не загружается весь датасет: запрос всегда с limit", async () => {
@@ -234,5 +252,60 @@ describe("таблица датасета", () => {
 
     expect(urls[0]).toMatch(/limit=\d+/);
     expect(urls[0]).toMatch(/offset=0/);
+  });
+});
+
+describe("показатели колонки", () => {
+  //#backend считал показатели, эндпоинт работал, типизированный клиент был написан —
+  //#и не вызывался ниоткуда. Вертикаль была доделана на три четверти, а пользователь
+  //#не мог посмотреть ни одного распределения
+  const STATISTICS = {
+    name: "сумма",
+    dtype: "Float64",
+    row_count: 3,
+    null_count: 1,
+    null_ratio: 0.3333,
+    unique_count: 2,
+    unique_ratio: 0.6667,
+    numeric: { min: -20, max: 100.5, mean: 40.25, median: 35.5, std: 85.2049, q1: 10, q3: 70 },
+    top_values: null,
+    histogram: { bins: [-20, 40.25, 100.5], counts: [1, 1], constant: false },
+    examples: [100.5, -20],
+  };
+
+  it("открываются из шапки колонки и приходят с сервера", async () => {
+    const urls: string[] = [];
+    stubRows((url) => {
+      urls.push(url);
+      return json(url.includes("/columns/") ? STATISTICS : PAGE);
+    });
+
+    render(<DatasetTable dataset={DATASET} />);
+    await screen.findByText("Москва");
+
+    await userEvent.click(screen.getByRole("button", { name: "Показатели колонки сумма" }));
+
+    await waitFor(() => {
+      expect(urls.some((url) => url.includes("/columns/%D1%81%D1%83%D0%BC%D0%BC%D0%B0"))).toBe(
+        true,
+      );
+    });
+
+    //#показатели именно показаны, а не просто загружены: загруженное и невидимое
+    //#для пользователя ничем не отличается от отсутствующего
+    expect(await screen.findByText("Float64")).toBeInTheDocument();
+    expect(screen.getByText("медиана")).toBeInTheDocument();
+    expect(screen.getByText("35,5")).toBeInTheDocument();
+  });
+
+  it("разброс не показывается всеми знаками, которые прислал сервер", async () => {
+    //#«разброс 2886,752774891121» — это не точность, а шум на весь экран
+    stubRows((url) => json(url.includes("/columns/") ? STATISTICS : PAGE));
+
+    render(<DatasetTable dataset={DATASET} />);
+    await screen.findByText("Москва");
+    await userEvent.click(screen.getByRole("button", { name: "Показатели колонки сумма" }));
+
+    expect(await screen.findByText("85,205")).toBeInTheDocument();
   });
 });

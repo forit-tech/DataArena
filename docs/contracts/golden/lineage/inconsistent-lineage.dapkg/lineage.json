@@ -1,0 +1,247 @@
+{
+  "columns": [
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "description": "rename_column: userid → customer_id",
+          "inputs": [
+            "userid"
+          ],
+          "kind": "step",
+          "node": "n2",
+          "operation": "rename_column",
+          "output": "customer_id",
+          "position": 1,
+          "step_id": "s1"
+        }
+      ],
+      "history": "complete",
+      "name": "customer_id",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "userid",
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "source": "src_customers",
+          "source_file": "customers.csv",
+          "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "read_by": [
+        "n3"
+      ]
+    },
+    {
+      "events": [],
+      "history": "complete",
+      "name": "monthly_spend",
+      "origin": "unknown",
+      "origins": [
+        {
+          "column": "monthly_spend",
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "source": "src_customers",
+          "source_file": "customers.csv",
+          "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [
+        {
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "description": "cast_column: tenure_months → tenure_months",
+          "inputs": [
+            "tenure_months"
+          ],
+          "kind": "step",
+          "node": "n99",
+          "operation": "cast_column",
+          "output": "tenure_months",
+          "position": 9,
+          "step_id": "s9"
+        }
+      ],
+      "history": "complete",
+      "name": "tenure_months",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "tenure_months",
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "source": "src_customers",
+          "source_file": "customers.csv",
+          "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [],
+      "history": "complete",
+      "name": "plan",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "plan",
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "source": "src_customers",
+          "source_file": "customers.csv",
+          "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [],
+      "history": "complete",
+      "name": "city",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "city",
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "source": "src_customers",
+          "source_file": "customers.csv",
+          "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [],
+      "history": "complete",
+      "name": "signup_date",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "signup_date",
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "source": "src_customers",
+          "source_file": "customers.csv",
+          "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [],
+      "history": "complete",
+      "name": "churned",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "churned",
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "source": "src_customers",
+          "source_file": "customers.csv",
+          "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "read_by": []
+    },
+    {
+      "events": [],
+      "history": "complete",
+      "name": "internal_note",
+      "origin": "source",
+      "origins": [
+        {
+          "column": "internal_note",
+          "dataset_id": "ds_customers",
+          "dataset_name": "customers.csv",
+          "source": "src_customers",
+          "source_file": "customers.csv",
+          "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "read_by": []
+    }
+  ],
+  "created_at": "2026-09-06T18:42:11.482Z",
+  "format_version": "1.1.0",
+  "graph": [
+    {
+      "id": "n1",
+      "inputs": [],
+      "op": "read",
+      "output_rows": 14,
+      "source": "src_customers"
+    },
+    {
+      "id": "n2",
+      "inputs": [
+        "n1"
+      ],
+      "op": "rename_column",
+      "output_rows": 14,
+      "params": {
+        "from": "userid",
+        "to": "customer_id"
+      }
+    },
+    {
+      "id": "n3",
+      "inputs": [
+        "n2"
+      ],
+      "note": "две строки повторяли customer_id",
+      "op": "deduplicate",
+      "output_rows": 12,
+      "params": {
+        "keep": "first",
+        "subset": [
+          "customer_id"
+        ]
+      }
+    }
+  ],
+  "package_id": "pkg_01J8ZK4M7Q2N5X",
+  "provenance": {
+    "history": "complete",
+    "origin": "upload",
+    "status": "known",
+    "unknown_reason": null,
+    "warnings": []
+  },
+  "row_count_trace": [
+    {
+      "after": "n1",
+      "rows": 14
+    },
+    {
+      "after": "n2",
+      "rows": 14
+    },
+    {
+      "after": "n3",
+      "rows": 12
+    }
+  ],
+  "sources": [
+    {
+      "bytes": 1284,
+      "column_count": 8,
+      "format": "csv",
+      "id": "src_customers",
+      "name": "customers.csv",
+      "read_options": {
+        "encoding": "utf-8",
+        "separator": ","
+      },
+      "row_count": 14,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}

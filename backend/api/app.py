@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import polars as pl
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,19 @@ from backend.api.request_context import (
     request_id_middleware,
     request_id_of,
 )
-from backend.api.routes import health, sql, system, workspaces
+from backend.api.routes import (
+    ai,
+    decision,
+    export,
+    health,
+    joins,
+    lineage,
+    package,
+    pipeline,
+    sql,
+    system,
+    workspaces,
+)
 from backend.api.schemas.system import ErrorResponse
 from backend.core.config import get_settings
 from backend.core.errors import AppError, build_error_payload
@@ -47,6 +60,8 @@ COMMON_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     415: {"model": ErrorResponse, "description": "Неподдерживаемый формат файла."},
     422: {"model": ErrorResponse, "description": "Некорректные параметры запроса."},
     500: {"model": ErrorResponse, "description": "Внутренняя ошибка."},
+    502: {"model": ErrorResponse, "description": "ModelArena недоступна (только маршруты Decision Lab)."},
+    503: {"model": ErrorResponse, "description": "Локальная модель не отвечает (только маршруты ИИ)."},
     507: {"model": ErrorResponse, "description": "Недостаточно места на диске."},
 }
 
@@ -68,7 +83,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=list(settings.allowed_origins),
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
         #браузеру нужно разрешение читать этот заголовок, иначе пользователь не сможет
         #процитировать идентификатор запроса при обращении за помощью
@@ -78,7 +93,7 @@ def create_app() -> FastAPI:
     #идентификатор запроса ставится до всего остального, чтобы попасть в каждую строку лога
     app.middleware("http")(request_id_middleware)
 
-    for module in (system, workspaces, sql, health):
+    for module in (system, workspaces, sql, health, pipeline, joins, export, package, lineage, decision, ai):
         app.include_router(module.router, prefix="/api")
 
     _register_error_handlers(app)
@@ -140,6 +155,27 @@ def _register_error_handlers(app: FastAPI) -> None:
             status_code=error.status_code,
             content=build_error_payload(
                 "http_error", str(error.detail), request_id=request_id_of(request)
+            ),
+            headers={REQUEST_ID_HEADER: request_id_of(request)},
+        )
+
+    @app.exception_handler(pl.exceptions.PolarsError)
+    async def handle_data_error(request: Request, error: Exception) -> JSONResponse:
+        #движок отказался выполнить операцию над этими данными: неподходящие типы,
+        #значения, которые нельзя сравнить. Это ответ о данных, а не падение сервера —
+        #но трассировка нужна целиком: такой отказ означает, что проверка шага его пропустила
+        logger.exception(
+            "Движок данных отказался выполнить операцию",
+            extra={"request_id": request_id_of(request), "path": request.url.path},
+            exc_info=error,
+        )
+        return JSONResponse(
+            status_code=422,
+            content=build_error_payload(
+                "data_operation_failed",
+                "Операцию нельзя выполнить над этими данными. Проверьте типы колонок "
+                f"и значения шагов; подробности в логе под идентификатором {request_id_of(request)}.",
+                request_id=request_id_of(request),
             ),
             headers={REQUEST_ID_HEADER: request_id_of(request)},
         )

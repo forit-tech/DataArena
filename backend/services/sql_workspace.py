@@ -26,15 +26,12 @@ from pathlib import Path
 from backend.adapters.engine.duckdb_session import (
     MAX_QUERY_LENGTH,
     ParsedQuery,
-    QueryHandle,
     QueryLimits,
     QueryResult,
     SqlCancelledError,
     SqlError,
     SqlRejectedError,
     SqlTimeoutError,
-    execute_query,
-    hardened_session,
     parse_query,
 )
 from backend.adapters.storage.workspace_store import WorkspaceStore
@@ -47,6 +44,7 @@ from backend.domain.dataset.identifiers import (
 )
 from backend.domain.dataset.models import Dataset, DatasetStatus
 from backend.domain.sql.models import QueryRun, QueryStatus, SavedQuery
+from backend.services.sql_process import ProcessHandle, run_in_process
 from backend.services.workspace_access import reading_path
 
 #имя сохранённого запроса показывается в списке: слишком длинное его ломает,
@@ -111,12 +109,17 @@ class SqlWorkspace:
         self,
         sql: str,
         limits: QueryLimits | None = None,
-        handle: QueryHandle | None = None,
+        handle: ProcessHandle | None = None,
     ) -> QueryOutcome:
         """Выполняет запрос над датасетами рабочего пространства.
 
+        Сам запрос выполняет **отдельный процесс** — это закрытие долга D-01. Разбор
+        Этапа 3 нашёл запрос, который убивал интерпретатор целиком, и никакая
+        внутрипроцессная защита от этого не спасает: падает не запрос, а процесс.
+        Теперь падает только рабочий процесс, а сервер продолжает отвечать.
+
         `handle` создаётся вызывающим **до** запуска и уже зарегистрирован там, где его
-        найдёт отмена. Соединение оно получает здесь, когда сессия открыта. Не передан —
+        найдёт отмена. Процесс оно получает здесь, когда тот запущен. Не передан —
         значит отменять некому, и кнопку отмены в таком случае показывать нельзя.
         """
         #существование рабочего пространства проверяется до разбора: иначе на чужой
@@ -135,13 +138,9 @@ class SqlWorkspace:
             attempt.parsed = parse_query(sql)
             bindings, attempt.aliases = self._resolve_bindings(attempt.parsed)
 
-            with hardened_session(bindings, limits) as connection:
-                if handle is not None:
-                    handle.attach(connection)
-
-                result = execute_query(
-                    connection, attempt.parsed.sql, limits=limits, handle=handle
-                )
+            #разбор выполняется здесь: из него берутся псевдонимы для истории.
+            #Выполнение уходит в отдельный процесс вместе с движком
+            result = run_in_process(attempt.parsed.sql, bindings, limits=limits, handle=handle)
         except AppError as error:
             self._record(attempt, error=error)
             raise

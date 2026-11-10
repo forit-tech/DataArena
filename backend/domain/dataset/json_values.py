@@ -21,7 +21,16 @@ def json_safe_value(value: Any) -> Any:  # noqa: PLR0911 - диспетчер т
         return None
 
     if isinstance(value, float):
-        return None if math.isnan(value) or math.isinf(value) else value
+        #не-число и бесконечность — значения, а не пропуск. Прежде они уходили как null,
+        #и в таблице выглядели пустой ячейкой: «заполнить пропуски» их не трогает, и человек
+        #видел пропуск, который заполнение будто бы не заполнило
+        if math.isnan(value):
+            return "NaN"
+
+        if math.isinf(value):
+            return "Infinity" if value > 0 else "-Infinity"
+
+        return value
 
     if isinstance(value, Decimal):
         #строка, а не float: перевод в float теряет точность, ради которой Decimal и берут

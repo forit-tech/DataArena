@@ -9,9 +9,10 @@
 
 .table-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-2) var(--space-4);
 }
 
 .table-search {
@@ -23,7 +24,7 @@
   border-radius: var(--radius-md);
   background: var(--surface-inset);
   color: var(--text-muted);
-  min-width: 320px;
+  min-width: min(320px, 100%);
 }
 
 .table-search input {
@@ -267,7 +268,7 @@
 
 .dataset-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: var(--space-3);
   margin: 0;
   padding: 0;
@@ -322,5 +323,153 @@
   align-items: center;
   gap: var(--space-1);
   color: var(--severity-warning);
+  font-size: var(--text-xs);
+}
+
+/* Показатели колонки: панель под таблицей, а не поверх неё — данные остаются видны */
+.table-th__stats {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  z-index: 2;
+}
+
+.table-th:hover .table-th__stats,
+.table-th__stats:focus-visible,
+.table-th__stats--open {
+  opacity: 1;
+}
+
+.table-th__stats:hover,
+.table-th__stats--open {
+  background: var(--accent-primary-muted);
+  color: var(--accent-primary);
+}
+
+.column-stats {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.column-stats__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.column-stats__name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.column-stats__dtype {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.column-stats__loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.column-stats__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.column-stats__grid dt {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.column-stats__grid dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+
+.column-stats__section {
+  margin-top: var(--space-3);
+}
+
+.column-stats__title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.column-stats__values {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.column-stats__values li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.column-stats__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-stats__count {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+}
+
+/* Гистограмма рисуется столбиками, а не картинкой: значения читаются подсказкой */
+.histogram {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 64px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+
+.histogram__bar {
+  flex: 1 1 0;
+  min-height: 1px;
+  border-radius: 1px 1px 0 0;
+  background: var(--accent-primary);
+}
+
+.column-stats__range {
+  display: flex;
+  justify-content: space-between;
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
   font-size: var(--text-xs);
 }

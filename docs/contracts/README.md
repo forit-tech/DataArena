@@ -32,6 +32,8 @@
 | [`reference/build_golden.py`](reference/build_golden.py) | Детерминированная сборка эталонного пакета и фикстур |
 | [`reference/run_matrix.py`](reference/run_matrix.py) | Producer-проверка: вся матрица фикстур одним запуском |
 | [`reference/check_reproducibility.py`](reference/check_reproducibility.py) | Проверка J-6: отпечаток не зависит от версии библиотек |
+| [`reference/contract_digest.py`](reference/contract_digest.py) | Каталог совпадает с `SHA256SUMS`; две копии контракта побайтово равны |
+| [`SHA256SUMS`](SHA256SUMS) | sha256 каждого файла контракта; отпечаток каталога — sha256 этого файла |
 | [`examples/`](examples/) | Файлы пакета по отдельности, для чтения глазами |
 | [`golden/customers_golden.dapkg`](golden/) | Эталонный пакет, каталогом и `.zip` |
 | [`golden/negative/`](golden/negative/) | Одиннадцать фикстур для негативных и краевых тестов |
@@ -73,6 +75,24 @@ python reference/validate_package.py golden/customers_golden.dapkg   # один 
 | `negative/traversal.dapkg.zip` | `package_unsafe_path` |
 | `negative/zip-bomb.dapkg.zip` | `package_limit_exceeded` |
 
+История колонок, 1.1.0 ([CCR-001](CCR-001-lineage-columns.md)); собираются
+`reference/build_lineage_fixtures.py` из эталонного пакета. Сам эталон — пакет 1.0.0
+без истории колонок, то есть «старый пакет»:
+
+| Пакет | Результат |
+|---|---|
+| `lineage/upload-lineage.dapkg` | ПРИНЯТ — загрузка файлом, переименование, чтение шагом |
+| `lineage/join-lineage.dapkg` | ПРИНЯТ — соединение, шаги обоих родителей, шаг после сборки |
+| `lineage/multi-level-lineage.dapkg` | ПРИНЯТ — прародитель без узлов в графе, колонка из двух источников, незнакомая операция |
+| `lineage/legacy-unknown.dapkg` | ПРИНЯТ — происхождение неизвестно |
+| `lineage/truncated-history.dapkg` | ПРИНЯТ — история родителя усечена |
+| `lineage/future-optional-field.dapkg` | ПРИНЯТ — незнакомые поля и значения на всех уровнях |
+| `lineage/malformed-lineage.dapkg` | `package_part_invalid` |
+| `lineage/inconsistent-lineage.dapkg` | `package_part_invalid` — `unknown` с источником, ссылка на несуществующий узел |
+| `lineage/oversized-lineage.dapkg` | `package_part_invalid` — строка длиннее предела |
+| `lineage/nan-lineage.dapkg` | `package_part_invalid` — `NaN` не является JSON |
+| `lineage/deep-lineage.dapkg` | `package_limit_exceeded` — вложенность глубже 32 |
+
 Все четырнадцать проверены **дважды**: эталонным валидатором DataArena и независимой
 реализацией ModelArena, написанной по спецификации без чтения `reference/*.py`.
 Оба прогона совпали с таблицей на Polars 1.20.0 и 1.44.1.
@@ -91,7 +111,14 @@ python reference/validate_package.py golden/customers_golden.dapkg   # один 
 2. Пересобрать фикстуры: `python reference/build_golden.py golden`.
 3. Прогнать матрицу и `check_reproducibility.py` на обеих сторонах.
 4. Определить тип изменения по §E спецификации и поднять версию.
-5. Синхронизировать каталог в оба репозитория и поставить общий тег.
+5. Пересобрать `SHA256SUMS`: `python reference/contract_digest.py --write`.
+6. Синхронизировать каталог в оба репозитория и поставить общий тег.
+
+CI обеих сторон проверяет, что каталог совпадает со своим `SHA256SUMS`, и сравнивает
+копию с копией соседнего репозитория (`contract_digest.py --compare`). Правка любого
+файла без пересборки `SHA256SUMS`, лишний или пропавший файл, копии, разошедшиеся между
+репозиториями, — красный CI. Пока изменение контракта перенесено только в один
+репозиторий, сравнение красное у обоих: изменение не закончено, пока копии не равны.
 
 Изменение, ломающее golden package, **обязано** сопровождаться повышением major-версии.
 

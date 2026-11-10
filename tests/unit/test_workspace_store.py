@@ -29,6 +29,10 @@ from backend.domain.dataset.models import (
     LogicalType,
     SemanticType,
 )
+from backend.domain.lineage.models import Provenance, UploadSource
+
+#происхождение загрузки для датасетов, которые тест кладёт в хранилище напрямую
+TEST_UPLOAD = Provenance.upload(UploadSource("t.csv", "csv", "0" * 64, 0))
 
 
 @pytest.fixture
@@ -59,7 +63,7 @@ def test_schema_survives_the_round_trip_through_storage(store: WorkspaceStore) -
     #иначе сравнение с LogicalType молча перестанет работать
     workspace_id = new_workspace_id()
     store.create_workspace(workspace_id, "ws")
-    dataset = store.add_dataset(make_dataset(workspace_id))
+    dataset = store.add_dataset(make_dataset(workspace_id), TEST_UPLOAD, content_addressed=True)
 
     restored = store.get_dataset(dataset.dataset_id)
 
@@ -74,8 +78,8 @@ def test_the_same_content_in_another_workspace_is_a_separate_dataset(store: Work
     store.create_workspace(first, "первый")
     store.create_workspace(second, "второй")
 
-    store.add_dataset(make_dataset(first, sha256="c" * 64))
-    store.add_dataset(make_dataset(second, sha256="c" * 64))
+    store.add_dataset(make_dataset(first, sha256="c" * 64), TEST_UPLOAD, content_addressed=True)
+    store.add_dataset(make_dataset(second, sha256="c" * 64), TEST_UPLOAD, content_addressed=True)
 
     assert store.find_dataset_by_content(second, "c" * 64) is not None
     assert len(store.list_datasets(first)) == 1
@@ -85,7 +89,7 @@ def test_deleting_a_workspace_removes_its_datasets(store: WorkspaceStore) -> Non
     #без каскада в базе остались бы карточки, ссылающиеся на несуществующее пространство
     workspace_id = new_workspace_id()
     store.create_workspace(workspace_id, "ws")
-    dataset = store.add_dataset(make_dataset(workspace_id))
+    dataset = store.add_dataset(make_dataset(workspace_id), TEST_UPLOAD, content_addressed=True)
 
     store.delete_workspace(workspace_id)
 
@@ -95,7 +99,7 @@ def test_deleting_a_workspace_removes_its_datasets(store: WorkspaceStore) -> Non
 
 def test_dataset_cannot_be_added_to_a_missing_workspace(store: WorkspaceStore) -> None:
     with pytest.raises(WorkspaceNotFoundError):
-        store.add_dataset(make_dataset(new_workspace_id()))
+        store.add_dataset(make_dataset(new_workspace_id()), TEST_UPLOAD, content_addressed=True)
 
 
 def test_row_count_is_unknown_until_counted(store: WorkspaceStore) -> None:
@@ -103,7 +107,7 @@ def test_row_count_is_unknown_until_counted(store: WorkspaceStore) -> None:
     #показать «неизвестно», чем подставить оценку и выдать её за факт
     workspace_id = new_workspace_id()
     store.create_workspace(workspace_id, "ws")
-    dataset = store.add_dataset(make_dataset(workspace_id))
+    dataset = store.add_dataset(make_dataset(workspace_id), TEST_UPLOAD, content_addressed=True)
 
     assert store.get_dataset(dataset.dataset_id).row_count is None
 

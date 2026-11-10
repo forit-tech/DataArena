@@ -6,6 +6,10 @@ import "./styles/base.css";
 import "./styles/table.css";
 import "./styles/sql.css";
 import "./styles/health.css";
+import "./styles/pipeline.css";
+import "./styles/decision.css";
+import "./styles/polish.css";
+import "./styles/shell.css";
 
 const container = document.getElementById("root");
 

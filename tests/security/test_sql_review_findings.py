@@ -40,6 +40,7 @@ from backend.domain.dataset.models import (
     LogicalType,
     SemanticType,
 )
+from backend.domain.lineage.models import Provenance, UploadSource
 from backend.services import context
 from backend.services.running_queries import (
     QueryNotRunningError,
@@ -47,6 +48,9 @@ from backend.services.running_queries import (
     RunningQueries,
 )
 from backend.services.sql_workspace import DatasetNotQueryableError, SqlWorkspace
+
+#происхождение загрузки для датасетов, которые тест кладёт в хранилище напрямую
+TEST_UPLOAD = Provenance.upload(UploadSource("t.csv", "csv", "0" * 64, 0))
 
 
 @pytest.fixture
@@ -344,7 +348,9 @@ def test_a_dataset_that_failed_normalisation_is_refused_with_its_reason(
             created_at=datetime.now(UTC),
             status=DatasetStatus.NORMALIZATION_FAILED,
             status_reason="конвертация не удалась",
-        )
+        ),
+        TEST_UPLOAD,
+        content_addressed=True,
     )
 
     workspace_sql = SqlWorkspace(

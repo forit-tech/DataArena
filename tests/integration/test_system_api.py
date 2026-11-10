@@ -31,7 +31,7 @@ def test_health_reports_the_contract_version(client: TestClient) -> None:
     contract = client.get("/api/system/health").json()["contract"]
 
     assert contract["format"] == "dataarena.package"
-    assert contract["version"] == "1.0.0"
+    assert contract["version"] == "1.1.0"
     assert contract["fingerprint_algorithm"] == "dataarena-logical-sha256-v1"
 
 

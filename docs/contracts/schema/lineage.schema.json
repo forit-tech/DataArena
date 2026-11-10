@@ -78,10 +78,91 @@
           "rows": { "type": "integer", "minimum": 0 }
         }
       }
+    },
+
+    "provenance": {
+      "type": "object",
+      "description": "С 1.1.0, необязательно. Известно ли, как создан датасет, и полна ли его история. Отсутствие поля — «producer не сообщил», а не «история полна».",
+      "additionalProperties": true,
+      "required": ["status", "history"],
+      "properties": {
+        "status": { "type": "string", "maxLength": 50, "description": "known | unknown. Незнакомое значение потребитель понимает как unknown." },
+        "origin": { "type": ["string", "null"], "maxLength": 50, "description": "upload | join | null, если неизвестно." },
+        "unknown_reason": { "type": ["string", "null"], "maxLength": 100 },
+        "history": { "type": "string", "maxLength": 50, "description": "complete | incomplete. Незнакомое значение потребитель понимает как incomplete." },
+        "warnings": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "type": "string", "maxLength": 100 }
+        }
+      }
+    },
+
+    "columns": {
+      "type": "array",
+      "description": "С 1.1.0, необязательно. История каждой колонки результата в порядке schema.json. Отсутствие поля — история колонок не передана.",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "origin", "origins", "events"],
+        "properties": {
+          "name": { "$ref": "#/$defs/text" },
+          "origin": { "type": "string", "maxLength": 50, "description": "source | step | unknown." },
+          "history": { "type": "string", "maxLength": 50, "description": "complete | incomplete; отсутствие — complete." },
+          "origins": {
+            "type": "array",
+            "description": "Колонки-источники, 0..N. Пусто тогда и только тогда, когда origin = unknown.",
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["column"],
+              "properties": {
+                "column": { "$ref": "#/$defs/text" },
+                "dataset_id": { "type": ["string", "null"], "maxLength": 100 },
+                "dataset_name": { "type": ["string", "null"], "maxLength": 300 },
+                "source_file": { "type": ["string", "null"], "maxLength": 300 },
+                "source_sha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+                "source": { "$ref": "#/$defs/node_id" }
+              }
+            }
+          },
+          "events": {
+            "type": "array",
+            "description": "События в хронологическом порядке: шаги родителей до сборки, соединение, шаги самого датасета. Порядок нормативен.",
+            "maxItems": 10000,
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["kind", "operation", "output"],
+              "properties": {
+                "kind": { "type": "string", "maxLength": 50, "description": "step | join." },
+                "operation": { "type": "string", "minLength": 1, "maxLength": 100 },
+                "dataset_id": { "type": ["string", "null"], "maxLength": 100 },
+                "dataset_name": { "type": ["string", "null"], "maxLength": 300 },
+                "position": { "type": "integer", "minimum": 0 },
+                "step_id": { "type": ["string", "null"], "maxLength": 100 },
+                "description": { "$ref": "#/$defs/text" },
+                "inputs": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/text" } },
+                "output": { "$ref": "#/$defs/text" },
+                "node": { "$ref": "#/$defs/node_id" }
+              }
+            }
+          },
+          "read_by": {
+            "type": "array",
+            "description": "Узлы graph, которые колонку только читали, не меняя значений.",
+            "maxItems": 10000,
+            "items": { "$ref": "#/$defs/node_id" }
+          }
+        }
+      }
     }
   },
 
   "$defs": {
+    "text": { "type": "string", "maxLength": 10000 },
     "node_id": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[A-Za-z0-9_.-]+$" },
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" }

@@ -20,7 +20,11 @@ from backend.adapters.formats.capabilities import CSV, PARQUET
 from backend.adapters.storage.workspace_store import DuplicateDatasetError, WorkspaceStore
 from backend.core.errors import DatasetReadError
 from backend.domain.dataset.identifiers import new_dataset_id, new_workspace_id
-from backend.services.dataset_import import import_dataset, workspace_paths
+from backend.domain.lineage.models import Provenance, UploadSource
+from backend.services.dataset_import import import_dataset, uploaded, workspace_paths
+
+#происхождение загрузки для датасетов, которые тест кладёт в хранилище напрямую
+TEST_UPLOAD = Provenance.upload(UploadSource("t.csv", "csv", "0" * 64, 0))
 
 
 @pytest.fixture
@@ -159,7 +163,7 @@ def test_concurrent_upload_of_the_same_content_yields_one_dataset(tmp_path: Path
         try:
             staged = tmp_path / f"staged_{index}.csv"
             staged.write_bytes(payload)
-            import_dataset(store, tmp_path / "ws", workspace_id, staged, "race.csv")
+            import_dataset(store, tmp_path / "ws", workspace_id, staged, "race.csv", provenance=uploaded, content_addressed=True)
         except Exception as error:  # noqa: BLE001 - тест обязан увидеть любую утечку наружу
             failures.append(f"{type(error).__name__}: {error}")
 
@@ -183,10 +187,10 @@ def test_duplicate_is_reported_as_a_typed_error_not_a_database_message(
 
     workspace_id = new_workspace_id()
     store.create_workspace(workspace_id, "ws")
-    store.add_dataset(make_dataset(workspace_id, sha256="d" * 64))
+    store.add_dataset(make_dataset(workspace_id, sha256="d" * 64), TEST_UPLOAD, content_addressed=True)
 
     with pytest.raises(DuplicateDatasetError) as error:
-        store.add_dataset(make_dataset(workspace_id, sha256="d" * 64))
+        store.add_dataset(make_dataset(workspace_id, sha256="d" * 64), TEST_UPLOAD, content_addressed=True)
 
     assert "UNIQUE constraint" not in error.value.message
     assert error.value.status_code == 409
@@ -204,7 +208,7 @@ def test_failed_registration_does_not_leave_an_orphan_file(tmp_path: Path) -> No
     staged.write_text("a,b\n1,2\n", encoding="utf-8")
 
     with pytest.raises(Exception, match="не найден"):
-        import_dataset(store, tmp_path / "ws", missing_workspace, staged, "data.csv")
+        import_dataset(store, tmp_path / "ws", missing_workspace, staged, "data.csv", provenance=uploaded, content_addressed=True)
 
     sources = tmp_path / "ws" / missing_workspace / "sources"
     left_behind = list(sources.glob("*")) if sources.exists() else []
@@ -239,7 +243,7 @@ def test_dataset_and_its_artifact_are_written_atomically(tmp_path: Path) -> None
         row_count=10,
         warnings=("Excel вмещает не более 1 048 576 строк.",),
     )
-    store.add_dataset(dataset)
+    store.add_dataset(dataset, TEST_UPLOAD, content_addressed=True)
 
     restored = store.get_dataset(dataset.dataset_id)
 
@@ -275,16 +279,16 @@ def test_artifact_from_another_converter_version_is_not_reused(tmp_path: Path) -
         created_at=datetime.now(UTC),
         row_count=5,
     )
-    store.add_dataset(dataset)
+    store.add_dataset(dataset, TEST_UPLOAD, content_addressed=True)
 
-    assert store.find_reusable_derived("1" * 64, "polars-parquet", 1) is not None
-    assert store.find_reusable_derived("1" * 64, "polars-parquet", 2) is None
-    assert store.find_reusable_derived("1" * 64, "other-converter", 1) is None
+    assert store.find_reusable_derived(workspace_id, "1" * 64, "polars-parquet", 1) is not None
+    assert store.find_reusable_derived(workspace_id, "1" * 64, "polars-parquet", 2) is None
+    assert store.find_reusable_derived(workspace_id, "1" * 64, "other-converter", 1) is None
 
     stale = store.drop_stale_derived("polars-parquet", 2)
 
     assert dataset.dataset_id in stale
-    assert store.find_reusable_derived("1" * 64, "polars-parquet", 1) is None
+    assert store.find_reusable_derived(workspace_id, "1" * 64, "polars-parquet", 1) is None
 
 
 # ── R-10: недостаток места обнаруживался в середине записи ────────────────────

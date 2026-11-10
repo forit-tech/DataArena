@@ -48,6 +48,30 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+class SafeStreamHandler(logging.StreamHandler):
+    """Обработчик, который не теряет запись из-за кодировки консоли.
+
+    Консоль Windows пишет в cp1251 и не знает «μ», иероглифов и эмодзи, которые приходят
+    в текстах ошибок вместе с данными пользователя. Стандартный обработчик в таком случае
+    печатал «Logging error» и терял запись — ровно ту, где была трассировка падения.
+    Здесь такая запись повторяется в ASCII: JSON с экранированными символами остаётся JSON.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = self.format(record)
+
+            try:
+                self.stream.write(message + self.terminator)
+            except UnicodeEncodeError:
+                ascii_only = json.dumps(json.loads(message), ensure_ascii=True)
+                self.stream.write(ascii_only + self.terminator)
+
+            self.flush()
+        except Exception:  # noqa: BLE001 - так же поступает стандартный обработчик
+            self.handleError(record)
+
+
 def configure_logging(level: int = logging.INFO) -> None:
     #эта функция настраивает единственный обработчик процесса и не дублирует записи при повторном вызове
     logger = logging.getLogger(LOGGER_NAME)
@@ -57,7 +81,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     if logger.handlers:
         return
 
-    handler = logging.StreamHandler(sys.stdout)
+    handler = SafeStreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     logger.addHandler(handler)
 

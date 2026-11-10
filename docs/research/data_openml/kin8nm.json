@@ -1,0 +1,308 @@
+{
+  "criteria": [
+    {
+      "key": "r2",
+      "label": "R²",
+      "direction": "max",
+      "unit": "",
+      "group": "quality"
+    },
+    {
+      "key": "rmse",
+      "label": "RMSE",
+      "direction": "min",
+      "unit": "",
+      "group": "quality"
+    },
+    {
+      "key": "mae",
+      "label": "MAE",
+      "direction": "min",
+      "unit": "",
+      "group": "quality"
+    },
+    {
+      "key": "fit_seconds",
+      "label": "Время обучения на фолде",
+      "direction": "min",
+      "unit": "с",
+      "group": "time"
+    },
+    {
+      "key": "inference_ms",
+      "label": "Инференс на 1000 строк",
+      "direction": "min",
+      "unit": "мс",
+      "group": "time"
+    },
+    {
+      "key": "model_mb",
+      "label": "Размер модели (pickle)",
+      "direction": "min",
+      "unit": "МБ",
+      "group": "size"
+    }
+  ],
+  "alternatives": [
+    {
+      "key": "ridge",
+      "label": "Ридж-регрессия",
+      "values": {
+        "r2": {
+          "value": 0.412991,
+          "std": 0.007019
+        },
+        "rmse": {
+          "value": 0.20193,
+          "std": 0.002561
+        },
+        "mae": {
+          "value": 0.162223,
+          "std": 0.002523
+        },
+        "fit_seconds": {
+          "value": 0.004028,
+          "std": 0.000439
+        },
+        "inference_ms": {
+          "value": 0.185303,
+          "std": 0.007446
+        },
+        "model_mb": {
+          "value": 0.001461,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "Pipeline"
+      }
+    },
+    {
+      "key": "tree",
+      "label": "Дерево решений",
+      "values": {
+        "r2": {
+          "value": 0.454639,
+          "std": 0.017394
+        },
+        "rmse": {
+          "value": 0.194611,
+          "std": 0.003307
+        },
+        "mae": {
+          "value": 0.14877,
+          "std": 0.003384
+        },
+        "fit_seconds": {
+          "value": 0.044475,
+          "std": 0.001537
+        },
+        "inference_ms": {
+          "value": 0.229334,
+          "std": 0.044888
+        },
+        "model_mb": {
+          "value": 0.189752,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "DecisionTreeRegressor"
+      }
+    },
+    {
+      "key": "rf",
+      "label": "Случайный лес (300)",
+      "values": {
+        "r2": {
+          "value": 0.716404,
+          "std": 0.01141
+        },
+        "rmse": {
+          "value": 0.140323,
+          "std": 0.002548
+        },
+        "mae": {
+          "value": 0.110614,
+          "std": 0.002378
+        },
+        "fit_seconds": {
+          "value": 10.932366,
+          "std": 0.385124
+        },
+        "inference_ms": {
+          "value": 86.494759,
+          "std": 4.359693
+        },
+        "model_mb": {
+          "value": 223.82475,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "RandomForestRegressor"
+      }
+    },
+    {
+      "key": "gbm",
+      "label": "Градиентный бустинг",
+      "values": {
+        "r2": {
+          "value": 0.55712,
+          "std": 0.016588
+        },
+        "rmse": {
+          "value": 0.175364,
+          "std": 0.003185
+        },
+        "mae": {
+          "value": 0.138995,
+          "std": 0.002793
+        },
+        "fit_seconds": {
+          "value": 1.630339,
+          "std": 0.042324
+        },
+        "inference_ms": {
+          "value": 1.568661,
+          "std": 0.165598
+        },
+        "model_mb": {
+          "value": 0.138861,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "GradientBoostingRegressor"
+      }
+    },
+    {
+      "key": "knn",
+      "label": "k ближайших соседей",
+      "values": {
+        "r2": {
+          "value": 0.799918,
+          "std": 0.005467
+        },
+        "rmse": {
+          "value": 0.117881,
+          "std": 0.001772
+        },
+        "mae": {
+          "value": 0.092425,
+          "std": 0.000882
+        },
+        "fit_seconds": {
+          "value": 0.008302,
+          "std": 0.00116
+        },
+        "inference_ms": {
+          "value": 23.98679,
+          "std": 1.392111
+        },
+        "model_mb": {
+          "value": 0.739146,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "Pipeline"
+      }
+    },
+    {
+      "key": "svr",
+      "label": "SVR (RBF)",
+      "values": {
+        "r2": {
+          "value": 0.907403,
+          "std": 0.004322
+        },
+        "rmse": {
+          "value": 0.080171,
+          "std": 0.001224
+        },
+        "mae": {
+          "value": 0.062423,
+          "std": 0.001096
+        },
+        "fit_seconds": {
+          "value": 2.913475,
+          "std": 0.362864
+        },
+        "inference_ms": {
+          "value": 57.084948,
+          "std": 1.584628
+        },
+        "model_mb": {
+          "value": 0.121457,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "Pipeline"
+      }
+    },
+    {
+      "key": "mlp",
+      "label": "Нейросеть MLP (64)",
+      "values": {
+        "r2": {
+          "value": 0.823828,
+          "std": 0.012496
+        },
+        "rmse": {
+          "value": 0.110562,
+          "std": 0.004073
+        },
+        "mae": {
+          "value": 0.085163,
+          "std": 0.002543
+        },
+        "fit_seconds": {
+          "value": 0.627949,
+          "std": 0.091056
+        },
+        "inference_ms": {
+          "value": 0.336813,
+          "std": 0.079313
+        },
+        "model_mb": {
+          "value": 0.029806,
+          "std": null
+        }
+      },
+      "meta": {
+        "family": "Pipeline"
+      }
+    }
+  ],
+  "primary": "r2",
+  "context": {
+    "dataset": "kin8nm",
+    "task": "regression",
+    "origin": "OpenML #189",
+    "rows": 8192,
+    "features": 8,
+    "protocol": "5-fold KFold, shuffle, seed 42",
+    "openml": {
+      "openml_id": 189,
+      "openml_name": "kin8nm",
+      "openml_version": "1",
+      "licence": "Public",
+      "categorical_features": 0,
+      "missing_cells": 0
+    },
+    "environment": {
+      "python": "3.12.10",
+      "sklearn": "1.7.2",
+      "numpy": "2.4.4",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+      "cpu_count": 16,
+      "seed": 42,
+      "folds": 5,
+      "inference_repeats": 5,
+      "measured_at": "2026-11-10T00:13:08+0300"
+    }
+  }
+}

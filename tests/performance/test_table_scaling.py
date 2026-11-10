@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 import tracemalloc
 from pathlib import Path
@@ -177,8 +178,10 @@ def test_extremely_long_strings_do_not_break_the_page(tmp_path: Path) -> None:
     assert len(result.rows[0]["text"]) == 1_000_000
 
 
-def test_special_float_values_serialise_as_null(tmp_path: Path) -> None:
-    #NaN и бесконечности не являются валидным JSON: браузер не разберёт такой ответ
+def test_special_float_values_serialise_as_valid_json_distinct_from_null(tmp_path: Path) -> None:
+    #NaN и бесконечности не являются валидным JSON: браузер не разберёт такой ответ.
+    #Но и null для них — неправда: прежде ячейка с NaN выглядела пропуском, который
+    #«заполнить пропуски» не трогает, и в таблице это читалось как сбой заполнения
     frame = pl.DataFrame({"value": [1.0, float("nan"), float("inf"), float("-inf"), None]})
     path = tmp_path / "special.parquet"
     write_dataset(frame, path, "parquet")
@@ -186,4 +189,29 @@ def test_special_float_values_serialise_as_null(tmp_path: Path) -> None:
     result, _, _ = _page(path, offset=0, limit=5)
     values = [row["value"] for row in result.rows]
 
-    assert values == [1.0, None, None, None, None]
+    assert values == [1.0, "NaN", "Infinity", "-Infinity", None]
+    assert json.loads(json.dumps(values, allow_nan=False)) == values
+
+
+#прежде счётчик строк срезался на пяти миллионах, и находка диагностики «5 999 990 строк»
+#открывала таблицу, показывающую «5 000 000»: главное обещание раздела ломалось на обычном
+#датасете. Срез при этом ничего не экономил — план всё равно считался целиком
+BEYOND_THE_OLD_CAP = 6_000_000
+
+
+def test_the_row_count_stays_exact_beyond_five_million(tmp_path: Path) -> None:
+    """Число строк в таблице обязано быть точным при любом размере датасета.
+
+    Проверка дешёвая, несмотря на размер: число считается по плану, а не по загруженным
+    данным, и страница остаётся страницей.
+    """
+    path = tmp_path / "beyond_cap.parquet"
+    write_dataset(pl.DataFrame({"id": range(BEYOND_THE_OLD_CAP)}), path, "parquet")
+
+    lazy = scan_dataset(path)
+    schema = lazy.collect_schema()
+    request = table_view.parse_page_request(schema_names=tuple(schema.names()), offset=0, limit=10)
+    result = table_view.build_page(lazy, request, schema)
+
+    assert result.total_rows == BEYOND_THE_OLD_CAP, "число строк снова срезано сверху"
+    assert len(result.rows) == 10

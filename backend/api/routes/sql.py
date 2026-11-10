@@ -17,6 +17,7 @@ from backend.api.schemas.sql import (
 )
 from backend.domain.dataset.models import DatasetStatus
 from backend.services.context import get_running_queries, get_workspace_root, get_workspace_store
+from backend.services.pipeline import workspace as pipeline_service
 from backend.services.running_queries import ensure_query_token
 from backend.services.sql_workspace import SqlWorkspace, limits_for
 
@@ -37,7 +38,11 @@ def _workspace(workspace_id: str) -> SqlWorkspace:
     summary="Датасеты, доступные в запросах",
     description=(
         "Псевдонимы, которые можно написать в FROM. Пути к файлам в запрос не передаются: "
-        "связывание псевдонима с артефактом выполняет backend."
+        "связывание псевдонима с артефактом выполняет backend.\n\n"
+        "**SQL читает исходный артефакт датасета, а не результат его конвейера.** "
+        "Поле `has_pipeline_steps` говорит, что у датасета есть шаги преобразования, "
+        "которых запрос не увидит: интерфейс обязан это показать, иначе человек, "
+        "почистивший данные, получит ответ по неочищенным."
     ),
 )
 def list_bindings(workspace_id: str) -> dict:
@@ -54,10 +59,13 @@ def list_bindings(workspace_id: str) -> dict:
                 "column_count": dataset.column_count,
                 "columns": list(dataset.schema.names),
                 "queryable": dataset.status is DatasetStatus.READY,
+                #шаги есть, а запрос их не видит: об этом нельзя молчать
+                "has_pipeline_steps": pipeline_service.has_steps(store, dataset.dataset_id),
             }
             for dataset in store.list_datasets(workspace_id)
         ]
     }
+
 
 
 @router.post(
